@@ -523,7 +523,9 @@
            apron's colour, you choose an apron. Ticking it opens a panel of its
            own across the room. -->
       <label class="pgcheck">
-        <input type="checkbox" id="pgOn" checked>
+        <!-- Unchecked in the markup as well as in the script, so the box is
+             never briefly ticked before the first paint corrects it. -->
+        <input type="checkbox" id="pgOn">
         <span class="pgname">Pangden</span>
         <span class="hint">the striped apron</span>
       </label>

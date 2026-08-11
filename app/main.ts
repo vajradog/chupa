@@ -83,8 +83,18 @@ for (const k of KNOBS) {
  * whole page dies on load — which `tsc` will not tell you, since using a `let`
  * before its declaration is only an error at runtime.
  */
-let showPangden = true;
-let pangdenStyle = 'Tingri';
+/**
+ * OFF to begin with. The page opens on the chupa and the honju, which are the
+ * two cloths the game is actually about; the apron is a third thing you add.
+ * It also means the first thing anyone sees is the garment itself rather than
+ * a striped panel covering most of it.
+ *
+ * And when it does go on, it goes on as Towns — narrow even stripes across many
+ * colours, which is the best-looking of the seven and so the right one to be
+ * met by. The others are a step away, not hidden.
+ */
+let showPangden = false;
+let pangdenStyle = 'Towns';
 /**
  * Letter to hex, holding only the dyes that have been moved off their plant.
  *
