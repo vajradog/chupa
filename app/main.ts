@@ -624,6 +624,10 @@ function resize() {
   W = stageEl.clientWidth; H = stageEl.clientHeight;
   cv.width = W * DPR; cv.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // The rails beside her are positioned against `#main`, which also contains
+  // the sheet — so "full height" has to be the ROOM's height, not the column's,
+  // or they run on down over the controls. Only the layout knows it.
+  document.documentElement.style.setProperty('--stage-h', `${Math.round(H)}px`);
   pxPerCm = (H * 0.92) / HEIGHT_CM;
   originX = W / 2;
   floorY = H - (H - HEIGHT_CM * pxPerCm) / 2;
@@ -1241,6 +1245,24 @@ const CUSTOM_LABEL = 'Your own mix';
 
 const comboBands = comboDuo.querySelectorAll('i');
 
+/**
+ * The same pairs as the dropdown, as cloth, down the room's other margin.
+ *
+ * Phone only — it is hidden by CSS on a wide screen, where the named list has
+ * room to be read. Built once; only the mark on the current one moves.
+ */
+const combRail = document.getElementById('combrail') as HTMLElement;
+const railPairs: HTMLElement[] = PALETTES.map((pal, i) => {
+  const b = document.createElement('button');
+  b.className = 'cpair';
+  b.title = `${pal.name} — ${pal.note}`;
+  b.innerHTML = `<i style="background:${pal.chupa}"></i>`
+    + `<i class="b" style="background:${pal.honju}"></i>`;
+  b.onclick = () => applyCombo(i);
+  combRail.appendChild(b);
+  return b;
+});
+
 /** The chip alone. Cheap enough to run on every sample of a wheel drag. */
 function paintComboChip() {
   const i = comboEl.value === '' ? -1 : Number(comboEl.value);
@@ -1255,6 +1277,7 @@ function paintComboChip() {
 function paintCombo() {
   paintComboChip();
   const i = comboEl.value === '' ? -1 : Number(comboEl.value);
+  railPairs.forEach((b, k) => b.classList.toggle('on', k === i));
   comboNote.innerHTML = i < 0
     ? '<span class="g">mixed by hand</span>the wheel, or a suggestion below'
     : `<span class="g">${PALETTES[i].group}</span>${PALETTES[i].note}`;
@@ -1515,6 +1538,52 @@ function closeDyePicker() {
 }
 
 
+/**
+ * One sheet on a small screen, two floating panels on a large one.
+ *
+ * On a phone the room takes what is left of the screen and everything else is a
+ * single sheet under it, so only one of the three panes can be up at a time —
+ * `wearing` is the left panel, the other two are the right panel's. On a wide
+ * screen both panels are visible at once and `wearing` means nothing, so the
+ * bar is hidden and only the cloth/pangden half applies.
+ *
+ * Both live here rather than in two places because the same events drive them:
+ * ticking the pangden has to open the pangden, on either layout.
+ */
+const sheet = matchMedia('(max-width: 1080px)');
+const cardsPanel = document.querySelector('.panel.cards') as HTMLElement;
+const combosPanel = document.querySelector('.panel.combos') as HTMLElement;
+const mtabs = document.getElementById('mtabs') as HTMLElement;
+const mtabPangden = document.getElementById('mtabPangden') as HTMLButtonElement;
+type Pane = 'cloth' | 'pangden';
+let pane: Pane = 'cloth';
+
+function showPane(which: Pane) {
+  if (which === 'pangden' && !showPangden) which = 'cloth';
+  pane = which;
+  // The wardrobe is beside the figure on a phone and in its own panel on a
+  // wide screen, but it is never hidden either way — only the sheet's contents
+  // change.
+  cardsPanel.hidden = false;
+  combosPanel.hidden = false;
+  for (const b of Array.from(mtabs.querySelectorAll('.mtab'))) {
+    const on = (b as HTMLElement).dataset.pane === which;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+  }
+  showTab(which);
+  // The wheel belongs to whatever opened it, and that may have just left.
+  if (which !== 'pangden' && activeDye) { closeDyePicker(); refreshDyes(); refreshCards(); }
+}
+
+for (const b of Array.from(mtabs.querySelectorAll('.mtab'))) {
+  b.addEventListener('click', () => showPane((b as HTMLElement).dataset.pane as Pane));
+}
+// Turning the phone, or resizing a window past the breakpoint, changes which
+// layout is in force — reapply rather than leaving a panel hidden on a wide
+// screen where nothing can bring it back.
+sheet.addEventListener('change', () => showPane(pane));
+
 function showTab(which: 'cloth' | 'pangden') {
   const pangden = which === 'pangden' && showPangden;
   paneCloth.hidden = pangden;
@@ -1523,7 +1592,6 @@ function showTab(which: 'cloth' | 'pangden') {
   tabPangden.classList.toggle('on', pangden);
   tabCloth.setAttribute('aria-selected', String(!pangden));
   tabPangden.setAttribute('aria-selected', String(pangden));
-  // The wheel belongs to whatever opened it, and that thing is now off screen.
   if (!pangden && activeDye) { closeDyePicker(); refreshDyes(); refreshCards(); }
 }
 
@@ -1532,6 +1600,9 @@ function refreshPangden() {
   // Not disabled — absent. She is not wearing one, so there is nothing to
   // choose, and a greyed-out tab is a promise the page cannot keep.
   tabPangden.hidden = !showPangden;
+  mtabPangden.hidden = !showPangden;
+  // A bar with one tab in it is a label pretending to be a choice.
+  mtabs.classList.toggle('lone', !showPangden);
   // The regional note and the dyepot explanation used to print under these two
   // controls. Both are gone from the page at Thupten's call — the panel reads
   // as a wardrobe, not a catalogue entry. The sourcing is not lost with them:
@@ -1540,8 +1611,8 @@ function refreshPangden() {
   refreshDyes();
 }
 
-tabCloth.onclick = () => showTab('cloth');
-tabPangden.onclick = () => showTab('pangden');
+tabCloth.onclick = () => showPane('cloth');
+tabPangden.onclick = () => showPane('pangden');
 
 function setPangdenStyle(name: string) {
   pangdenStyle = name;
@@ -1566,7 +1637,7 @@ pgOn.addEventListener('change', () => {
   showPangden = pgOn.checked;
   refreshPangden();
   // Ticking it is a choice about the apron, so it opens the apron.
-  showTab(showPangden ? 'pangden' : 'cloth');
+  showPane(showPangden ? 'pangden' : 'cloth');
   draw();
   kiss(0.6);
   // And it arrives already tuned to what she has on, rather than as a regional
@@ -1636,12 +1707,31 @@ function pickerAnchor(): HTMLElement {
   return activeDye ? dyeHost : cardEls[activeSlot];
 }
 
+/**
+ * On a phone the wheel cannot drop out of the card it belongs to, because that
+ * card is sitting on the room beside her — a 150px wheel there would cover the
+ * garment you are colouring. So it goes to the top of the sheet instead, which
+ * is the one place with room and the one place already in view.
+ */
+function pickerParent(): HTMLElement | null {
+  if (!sheet.matches || activeDye) return null;
+  return pane === 'pangden' ? panePangden : paneCloth;
+}
+
 /** Park the wheel under whatever opened it, and open or shut the slot. */
 function placePicker() {
-  const anchor = pickerAnchor();
-  // Only when it is not already there. Re-inserting a node drops any pointer
-  // capture on the canvas inside it, which killed drags mid-turn.
-  if (pickerSlot.previousElementSibling !== anchor) anchor.after(pickerSlot);
+  const into = pickerParent();
+  if (into) {
+    // First thing in the sheet, so it is what you see when it opens.
+    if (pickerSlot.parentElement !== into || pickerSlot.previousElementSibling) {
+      into.prepend(pickerSlot);
+    }
+  } else {
+    const anchor = pickerAnchor();
+    // Only when it is not already there. Re-inserting a node drops any pointer
+    // capture on the canvas inside it, which killed drags mid-turn.
+    if (pickerSlot.previousElementSibling !== anchor) anchor.after(pickerSlot);
+  }
   pickerSlot.classList.toggle('open', pickerOpen);
   pickerSlot.setAttribute('aria-hidden', String(!pickerOpen));
 }
@@ -1779,11 +1869,14 @@ function paintCards() {
     (el.querySelector('.swatch') as HTMLElement).style.background = hex;
     (el.querySelector('.cname') as HTMLElement).textContent = nearestNamed(hex)[0];
     (el.querySelector('.ctone') as HTMLElement).textContent = describe(hex);
-    // The garment's name sits on its cloth, so it has to stay legible against
-    // whatever that cloth is. Oklab L is perceived lightness, so one threshold
-    // works for every hue — a 0.62 madder takes bone, a 0.90 blush takes ink.
-    (el.querySelector('.slotname') as HTMLElement).style.color =
-      hexToOklch(hex).l > 0.62 ? 'rgba(47,42,37,0.72)' : 'rgba(255,253,249,0.86)';
+    // Anything written ON the cloth has to stay legible against whatever that
+    // cloth is. Oklab L is perceived lightness, so one threshold works for
+    // every hue — a 0.62 madder takes bone, a 0.90 blush takes ink. Published
+    // on the card so the name can use it too, which it does on a phone where
+    // both sit inside the swatch.
+    const onCloth = hexToOklch(hex).l > 0.62;
+    el.style.setProperty('--on-cloth', onCloth ? 'rgba(47,42,37,0.78)' : 'rgba(255,253,249,0.92)');
+    el.style.setProperty('--on-cloth-dim', onCloth ? 'rgba(47,42,37,0.55)' : 'rgba(255,253,249,0.68)');
     (el.querySelector('.hex') as HTMLElement).textContent = hex.toUpperCase();
     el.classList.toggle('on', slot === activeSlot);
     el.classList.toggle('open', slot === activeSlot && pickerOpen);
@@ -1955,6 +2048,9 @@ for (const slot of ['chupa', 'honju'] as Slot[]) {
     pickerOpen = (slot === activeSlot && !wasDye) ? !pickerOpen : true;
     activeSlot = slot;
     if (wasDye) refreshDyes();
+    // The sheet is where the wheel appears on a phone, so it has to be the
+    // cloth pane rather than whatever was last open.
+    if (sheet.matches && pickerOpen && pane !== 'cloth') showPane('cloth');
     refreshCards();
   };
 }
@@ -2312,6 +2408,6 @@ resize();
 // After resize, so the weave chip has a width to be drawn at. The page opens on
 // the cloth tab: the apron is the second question, not the first.
 refreshPangden();
-showTab('cloth');
+showPane('cloth');
 // Laid over the hanger, let go, and left to settle.
 drop();
