@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pangden — cloth physics proof</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #16151a;
+    --bg-2: #1e1c23;
+    --bone: #e9e3d5;
+    --bone-dim: #9b958a;
+    --madder: #b3282d;
+    --line: #2e2c34;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--bone);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  header { padding: 18px 22px 10px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--madder); }
+  h1 { font-family: "Fraunces", serif; font-weight: 560; font-size: 26px; letter-spacing: 0.01em; }
+  h1 .tib { color: var(--bone-dim); font-weight: 400; }
+  #stage { flex: 1; position: relative; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas.grabbing { cursor: grabbing; }
+  #rod { position: absolute; height: 5px; border-radius: 3px; background: #4a4038; pointer-events: none; }
+  .hint {
+    position: absolute; left: 22px; bottom: 14px;
+    font-size: 11px; color: var(--bone-dim); letter-spacing: 0.06em; pointer-events: none;
+    transition: opacity 1.2s;
+  }
+  footer {
+    border-top: 1px solid var(--line);
+    background: var(--bg-2);
+    padding: 12px 22px 16px;
+    display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  }
+  .fabrics { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    background: none; border: 1px solid var(--line); border-radius: 8px;
+    color: var(--bone); font-family: inherit; font-size: 12px;
+    padding: 8px 12px 7px; cursor: pointer; text-align: left;
+    transition: border-color .15s, background .15s;
+  }
+  .chip small { display: block; color: var(--bone-dim); font-size: 10px; margin-top: 2px; }
+  .chip:hover { border-color: var(--bone-dim); }
+  .chip.on { border-color: var(--madder); background: rgba(179, 40, 45, 0.10); }
+  .grow { flex: 1; }
+  .params { font-size: 10.5px; color: var(--bone-dim); line-height: 1.7; white-space: nowrap; }
+  .params b { color: var(--bone); font-weight: 500; }
+  .breeze { display: flex; align-items: center; gap: 10px; min-width: 190px; }
+  .breeze label { font-size: 11px; color: var(--bone-dim); }
+  .breeze output { font-size: 11px; color: var(--bone); min-width: 3ch; text-align: right; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 110px; height: 3px; border-radius: 2px;
+    background: var(--line); outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 15px; height: 15px; border-radius: 50%;
+    background: var(--bone); border: 2px solid var(--bg-2); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--bone); border: 2px solid var(--bg-2); cursor: pointer;
+  }
+  .tbtn {
+    background: none; border: 1px solid var(--line); border-radius: 8px;
+    color: var(--bone-dim); font-family: inherit; font-size: 11px;
+    padding: 7px 11px; cursor: pointer;
+  }
+  .tbtn:hover { color: var(--bone); border-color: var(--bone-dim); }
+  @media (max-width: 660px) {
+    header { padding: 14px 16px 8px; }
+    h1 { font-size: 20px; }
+    footer { padding: 10px 14px 14px; gap: 10px; }
+    .params { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="eyebrow">Chupa designer · phase one physics proof</div>
+    <h1>Pangden <span class="tib">པང་གདན་</span></h1>
+  </div>
+</header>
+
+<div id="stage">
+  <canvas id="c"></canvas>
+  <div id="rod"></div>
+  <div class="hint" id="hint">drag the cloth · flick it · slide the breeze</div>
+</div>
+
+<footer>
+  <div class="fabrics" id="fabrics"></div>
+  <div class="grow"></div>
+  <div class="params" id="params"></div>
+  <div class="breeze">
+    <label for="wind">breeze</label>
+    <input type="range" id="wind" min="0" max="100" step="1" value="45">
+    <output id="windOut">45</output>
+  </div>
+  <button class="tbtn" id="resetBtn">reset</button>
+</footer>
+
+<script>
+"use strict";
+
+/* ============================================================
+   Fabric parameter blocks — the concept the whole app inherits.
+   bend:    stiffness of 2-neighbor bending constraints (0..1)
+   density: mass proxy — divides wind + interaction response
+   damping: velocity retention per step (energy loss)
+   sheen:   specular strength (rendering)
+   sat:     color saturation multiplier (rendering)
+   ============================================================ */
+const FABRICS = {
+  silk:   { label: "Silk brocade", note: "light · flows",     bend: 0.10, density: 0.45, damping: 0.9930, sheen: 0.85, sat: 1.10 },
+  cotton: { label: "Cotton",       note: "everyday drape",    bend: 0.30, density: 1.00, damping: 0.9800, sheen: 0.18, sat: 1.00 },
+  khadi:  { label: "Khadi",        note: "handwoven · matte", bend: 0.55, density: 1.35, damping: 0.9650, sheen: 0.06, sat: 0.92 },
+  wool:   { label: "Nambu wool",   note: "heavy · winter",    bend: 0.85, density: 2.60, damping: 0.9350, sheen: 0.03, sat: 0.88 },
+};
+let fabric = FABRICS.silk;
+
+/* ---------- pangden stripe program (per row) ---------- */
+const PALETTE = {
+  R: [179, 40, 45],   O: [217, 108, 43],  Y: [224, 165, 38],
+  G: [62, 122, 69],   T: [46, 127, 135],  B: [44, 78, 138],
+  M: [166, 58, 110],  W: [232, 226, 212], K: [38, 36, 40],
+};
+const BANDS = "R3 K1 Y2 G3 K1 W1 B3 M2 K1 O2 T3 K1 R2 Y1 G2 B2 K1 M3 W1 O3".split(" ")
+  .map(s => ({ c: s[0], w: +s.slice(1) }));
+
+/* ---------- cloth grid ---------- */
+const COLS = 40, ROWS = 52;
+const SPACING = 1.0;
+const N = COLS * ROWS;
+const px = new Float32Array(N), py = new Float32Array(N), pz = new Float32Array(N);
+const ox = new Float32Array(N), oy = new Float32Array(N), oz = new Float32Array(N);
+const pinned = new Uint8Array(N);
+
+function idx(cx, ry) { return ry * COLS + cx; }
+
+function resetCloth() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const i = idx(c, r);
+      px[i] = (c - (COLS - 1) / 2) * SPACING;
+      py[i] = -r * SPACING;
+      pz[i] = Math.sin(c * 0.5) * 0.08;
+      ox[i] = px[i]; oy[i] = py[i]; oz[i] = pz[i];
+      pinned[i] = (r === 0) ? 1 : 0;
+    }
+  }
+}
+resetCloth();
+
+/* ---------- constraints: structural + shear + bend ---------- */
+function buildConstraints() {
+  const st = [], bd = [];
+  const d = SPACING, dd = Math.SQRT2 * SPACING, d2 = 2 * SPACING;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const i = idx(c, r);
+      if (c + 1 < COLS) st.push(i, idx(c + 1, r), d);
+      if (r + 1 < ROWS) st.push(i, idx(c, r + 1), d);
+      if (c + 1 < COLS && r + 1 < ROWS) { st.push(i, idx(c + 1, r + 1), dd); st.push(idx(c + 1, r), idx(c, r + 1), dd); }
+      if (c + 2 < COLS) bd.push(i, idx(c + 2, r), d2);
+      if (r + 2 < ROWS) bd.push(i, idx(c, r + 2), d2);
+    }
+  }
+  return { st: new Float32Array(st), bd: new Float32Array(bd) };
+}
+const CON = buildConstraints();
+
+/* ---------- solver ---------- */
+const GRAV = -0.016;
+const ITER = 7;
+let breeze = 0.45, time = 0;
+let grabbed = -1, grabX = 0, grabY = 0;
+
+function step() {
+  time += 1 / 60;
+  const damp = fabric.damping;
+  const invDen = 1 / fabric.density;
+  const amp = Math.pow(breeze, 1.25);
+  const gust = amp > 0 ? amp * (0.55 + 0.45 * Math.sin(time * 0.5) * Math.sin(time * 0.23 + 1.7)) : 0;
+
+  for (let i = 0; i < N; i++) {
+    if (pinned[i]) continue;
+    let ax = 0, ay = GRAV, az = 0;
+    if (gust > 0) {
+      const wx = Math.sin(time * 1.1 + py[i] * 0.25) * 0.006
+               + Math.sin(time * 2.7 + px[i] * 0.4) * 0.003;
+      const wz = Math.sin(time * 0.9 + px[i] * 0.3 + py[i] * 0.12) * 0.009
+               + Math.sin(time * 2.2 + py[i] * 0.5) * 0.004;
+      ax += wx * gust * invDen;
+      az += wz * gust * invDen;
+    }
+    const nx = px[i] + (px[i] - ox[i]) * damp + ax;
+    const ny = py[i] + (py[i] - oy[i]) * damp + ay;
+    const nz = pz[i] + (pz[i] - oz[i]) * damp + az;
+    ox[i] = px[i]; oy[i] = py[i]; oz[i] = pz[i];
+    px[i] = nx; py[i] = ny; pz[i] = nz;
+  }
+
+  if (grabbed >= 0) {
+    const g = grabbed, k = Math.min(1, 0.55 * invDen + 0.25);
+    px[g] += (grabX - px[g]) * k;
+    py[g] += (grabY - py[g]) * k;
+    pz[g] *= 0.9;
+  }
+
+  const st = CON.st, bd = CON.bd, bendK = fabric.bend;
+  for (let it = 0; it < ITER; it++) {
+    for (let k = 0; k < st.length; k += 3) relax(st[k] | 0, st[k + 1] | 0, st[k + 2], 1.0);
+    if (bendK > 0.001) {
+      for (let k = 0; k < bd.length; k += 3) relax(bd[k] | 0, bd[k + 1] | 0, bd[k + 2], bendK * 0.5);
+    }
+  }
+}
+
+function relax(a, b, rest, kf) {
+  let dx = px[b] - px[a], dy = py[b] - py[a], dz = pz[b] - pz[a];
+  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+  const diff = (dist - rest) / dist * 0.5 * kf;
+  dx *= diff; dy *= diff; dz *= diff;
+  const pa = pinned[a], pb = pinned[b];
+  if (!pa && !pb) {
+    px[a] += dx; py[a] += dy; pz[a] += dz;
+    px[b] -= dx; py[b] -= dy; pz[b] -= dz;
+  } else if (pa && !pb) {
+    px[b] -= 2 * dx; py[b] -= 2 * dy; pz[b] -= 2 * dz;
+  } else if (!pa && pb) {
+    px[a] += 2 * dx; py[a] += 2 * dy; pz[a] += 2 * dz;
+  }
+}
+
+/* ============================================================
+   Raw WebGL renderer — per-vertex normals, per-pixel shading.
+   No libraries; camera model: screen = C + p*F/(camZ+z)
+   ============================================================ */
+const cv = document.getElementById("c");
+const gl = cv.getContext("webgl", { antialias: true });
+let W = 0, H = 0, DPR = 1, FOCAL = 0, CX = 0, CY = 0;
+const CAMZ = 60;
+
+const VSH = `
+attribute vec3 aPos;
+attribute vec3 aNor;
+attribute float aV;
+uniform float uF, uCamZ, uCX, uCY, uW, uH;
+varying vec3 vN;
+varying float vV;
+void main() {
+  float zc = uCamZ + aPos.z;
+  float xs = uCX + aPos.x * uF / zc;
+  float ys = uCY - aPos.y * uF / zc;
+  float xn = xs / uW * 2.0 - 1.0;
+  float yn = 1.0 - ys / uH * 2.0;
+  float zn = (zc - 20.0) / 100.0;
+  gl_Position = vec4(xn, yn, zn, 1.0);
+  vN = aNor;
+  vV = aV;
+}`;
+
+const FSH = `
+precision mediump float;
+uniform sampler2D uStripe;
+uniform float uSheen, uSat;
+varying vec3 vN;
+varying float vV;
+void main() {
+  vec3 L = normalize(vec3(-0.35, 0.42, 0.84));
+  vec3 n = normalize(vN);
+  if (n.z < 0.0) n = -n;
+  float diff = max(0.12, dot(n, L));
+  float spec = pow(diff, 24.0) * uSheen;
+  vec3 col = texture2D(uStripe, vec2(0.5, vV)).rgb;
+  float grey = (col.r + col.g + col.b) / 3.0;
+  col = mix(vec3(grey), col, uSat);
+  vec3 outc = col * (0.30 + diff * 0.80) + vec3(spec);
+  gl_FragColor = vec4(outc, 1.0);
+}`;
+
+function makeShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, makeShader(gl.VERTEX_SHADER, VSH));
+gl.attachShader(prog, makeShader(gl.FRAGMENT_SHADER, FSH));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const U = {};
+["uF","uCamZ","uCX","uCY","uW","uH","uStripe","uSheen","uSat"].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+const A = {
+  pos: gl.getAttribLocation(prog, "aPos"),
+  nor: gl.getAttribLocation(prog, "aNor"),
+  v:   gl.getAttribLocation(prog, "aV"),
+};
+
+/* stripe texture: one texel per particle row, nearest = crisp woven bands */
+(function makeStripeTex() {
+  const data = new Uint8Array(ROWS * 4);
+  let bi = 0, left = BANDS[0].w;
+  for (let r = 0; r < ROWS; r++) {
+    const col = PALETTE[BANDS[bi].c];
+    data[r * 4] = col[0]; data[r * 4 + 1] = col[1]; data[r * 4 + 2] = col[2]; data[r * 4 + 3] = 255;
+    if (--left === 0) { bi = (bi + 1) % BANDS.length; left = BANDS[bi].w; }
+  }
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, ROWS, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.uniform1i(U.uStripe, 0);
+})();
+
+/* static v-coordinate buffer */
+const vArr = new Float32Array(N);
+for (let r = 0; r < ROWS; r++)
+  for (let c = 0; c < COLS; c++)
+    vArr[idx(c, r)] = (r + 0.5) / ROWS;
+const vBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vBuf);
+gl.bufferData(gl.ARRAY_BUFFER, vArr, gl.STATIC_DRAW);
+
+/* index buffer: 2 triangles per quad */
+const indices = new Uint16Array((COLS - 1) * (ROWS - 1) * 6);
+{
+  let k = 0;
+  for (let r = 0; r < ROWS - 1; r++) {
+    for (let c = 0; c < COLS - 1; c++) {
+      const a = idx(c, r), b = idx(c + 1, r), d = idx(c, r + 1), e = idx(c + 1, r + 1);
+      indices[k++] = a; indices[k++] = b; indices[k++] = e;
+      indices[k++] = a; indices[k++] = e; indices[k++] = d;
+    }
+  }
+}
+const iBuf = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iBuf);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+/* dynamic position + normal buffers */
+const posArr = new Float32Array(N * 3);
+const norArr = new Float32Array(N * 3);
+const posBuf = gl.createBuffer();
+const norBuf = gl.createBuffer();
+
+function computeNormals() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const i = idx(c, r);
+      const iR = idx(Math.min(c + 1, COLS - 1), r), iL = idx(Math.max(c - 1, 0), r);
+      const iD = idx(c, Math.min(r + 1, ROWS - 1)), iU = idx(c, Math.max(r - 1, 0));
+      const tx1 = px[iR] - px[iL], ty1 = py[iR] - py[iL], tz1 = pz[iR] - pz[iL];
+      const tx2 = px[iD] - px[iU], ty2 = py[iD] - py[iU], tz2 = pz[iD] - pz[iU];
+      let nx = ty1 * tz2 - tz1 * ty2;
+      let ny = tz1 * tx2 - tx1 * tz2;
+      let nz = tx1 * ty2 - ty1 * tx2;
+      const nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1e-6;
+      norArr[i * 3] = nx / nl; norArr[i * 3 + 1] = ny / nl; norArr[i * 3 + 2] = nz / nl;
+    }
+  }
+}
+
+function resize() {
+  const s = document.getElementById("stage");
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = s.clientWidth; H = s.clientHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  gl.viewport(0, 0, cv.width, cv.height);
+  const worldH = ROWS * SPACING;
+  FOCAL = (H * 0.82) * CAMZ / worldH;
+  CX = W / 2; CY = H * 0.10;
+  gl.uniform1f(U.uF, FOCAL); gl.uniform1f(U.uCamZ, CAMZ);
+  gl.uniform1f(U.uCX, CX); gl.uniform1f(U.uCY, CY);
+  gl.uniform1f(U.uW, W); gl.uniform1f(U.uH, H);
+
+  /* position the rod overlay along the pinned top row */
+  const halfW = ((COLS - 1) / 2 * SPACING + 1.2) * FOCAL / CAMZ;
+  const rod = document.getElementById("rod");
+  rod.style.left = (CX - halfW) + "px";
+  rod.style.width = (halfW * 2) + "px";
+  rod.style.top = (CY - 6) + "px";
+}
+window.addEventListener("resize", resize);
+resize();
+
+gl.enable(gl.DEPTH_TEST);
+gl.clearColor(0.086, 0.082, 0.102, 1.0);
+
+function render() {
+  for (let i = 0; i < N; i++) {
+    posArr[i * 3] = px[i]; posArr[i * 3 + 1] = py[i]; posArr[i * 3 + 2] = pz[i];
+  }
+  computeNormals();
+
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.uniform1f(U.uSheen, fabric.sheen);
+  gl.uniform1f(U.uSat, fabric.sat);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, posArr, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(A.pos);
+  gl.vertexAttribPointer(A.pos, 3, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, norBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, norArr, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(A.nor);
+  gl.vertexAttribPointer(A.nor, 3, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, vBuf);
+  gl.enableVertexAttribArray(A.v);
+  gl.vertexAttribPointer(A.v, 1, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iBuf);
+  gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+}
+
+/* ---------- interaction ---------- */
+function projectAll(outX, outY) {
+  for (let i = 0; i < N; i++) {
+    const zc = CAMZ + pz[i];
+    outX[i] = CX + px[i] * FOCAL / zc;
+    outY[i] = CY - py[i] * FOCAL / zc;
+  }
+}
+const tmpX = new Float32Array(N), tmpY = new Float32Array(N);
+
+function pickParticle(mx, my) {
+  projectAll(tmpX, tmpY);
+  let best = -1, bestD = 30 * 30;
+  for (let i = 0; i < N; i++) {
+    const dx = tmpX[i] - mx, dy = tmpY[i] - my;
+    const dd = dx * dx + dy * dy;
+    if (dd < bestD) { bestD = dd; best = i; }
+  }
+  return best;
+}
+function screenToWorld(mx, my, zc) {
+  return [(mx - CX) * zc / FOCAL, -(my - CY) * zc / FOCAL];
+}
+let hintFaded = false;
+cv.addEventListener("pointerdown", e => {
+  cv.setPointerCapture(e.pointerId);
+  const i = pickParticle(e.offsetX, e.offsetY);
+  if (i >= 0 && !pinned[i]) {
+    grabbed = i;
+    const w = screenToWorld(e.offsetX, e.offsetY, CAMZ + pz[i]);
+    grabX = w[0]; grabY = w[1];
+    cv.classList.add("grabbing");
+    if (!hintFaded) { document.getElementById("hint").style.opacity = 0; hintFaded = true; }
+  }
+});
+cv.addEventListener("pointermove", e => {
+  if (grabbed < 0) return;
+  const w = screenToWorld(e.offsetX, e.offsetY, CAMZ + pz[grabbed]);
+  grabX = w[0]; grabY = w[1];
+});
+function release() { grabbed = -1; cv.classList.remove("grabbing"); }
+cv.addEventListener("pointerup", release);
+cv.addEventListener("pointercancel", release);
+
+/* ---------- UI ---------- */
+const fabWrap = document.getElementById("fabrics");
+for (const key of Object.keys(FABRICS)) {
+  const f = FABRICS[key];
+  const b = document.createElement("button");
+  b.className = "chip" + (f === fabric ? " on" : "");
+  b.innerHTML = f.label + "<small>" + f.note + "</small>";
+  b.onclick = () => {
+    fabric = f;
+    for (const el of fabWrap.children) el.classList.remove("on");
+    b.classList.add("on");
+    showParams();
+  };
+  fabWrap.appendChild(b);
+}
+function showParams() {
+  document.getElementById("params").innerHTML =
+    "bend <b>" + fabric.bend.toFixed(2) + "</b>&nbsp;&nbsp;density <b>" + fabric.density.toFixed(2) +
+    "</b><br>damping <b>" + fabric.damping.toFixed(3) + "</b>&nbsp;&nbsp;sheen <b>" + fabric.sheen.toFixed(2) + "</b>";
+}
+showParams();
+
+const windSlider = document.getElementById("wind");
+const windOut = document.getElementById("windOut");
+if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  windSlider.value = 0;
+}
+function syncWind() {
+  breeze = windSlider.value / 100;
+  windOut.textContent = windSlider.value;
+}
+windSlider.addEventListener("input", syncWind);
+syncWind();
+
+document.getElementById("resetBtn").onclick = resetCloth;
+
+/* ---------- main loop ---------- */
+function frame() {
+  step(); step();
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

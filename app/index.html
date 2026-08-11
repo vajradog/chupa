@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chupa Designer — dev</title>
+<style>
+  :root { --bg:#16151a; --bone:#e9e3d5; --bone-dim:#9b958a; --madder:#b3282d; --line:#2e2c34; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--bone); font-family:"IBM Plex Mono",ui-monospace,monospace; padding:48px 28px; }
+  .eyebrow { font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--madder); }
+  h1 { font-size:24px; font-weight:500; margin:6px 0 22px; }
+  ul { list-style:none; display:flex; flex-direction:column; gap:10px; max-width:560px; }
+  a { color:var(--bone); text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:14px 16px; display:block; }
+  a:hover { border-color:var(--madder); }
+  small { display:block; color:var(--bone-dim); font-size:11px; margin-top:4px; }
+</style>
+</head>
+<body>
+  <div class="eyebrow">Chupa designer</div>
+  <h1>Dev pages</h1>
+  <ul>
+    <li>
+      <a href="/dev/pangden/">Phase 1 · Pangden cloth physics
+        <small>the phase-one proof, driven by @chupa/cloth</small>
+      </a>
+    </li>
+    <li>
+      <a href="/dev/mannequin/">Phase 2 · Mannequin
+        <small>parametric form + SDF collision — drop cloth on her shoulders</small>
+      </a>
+    </li>
+    <li>
+      <a href="/dev/chupa/">Phase 3 · Chupa
+        <small>the garment shell — colour, cloth, pangden, turntable</small>
+      </a>
+    </li>
+  </ul>
+</body>
+</html>

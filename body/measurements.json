@@ -1,0 +1,55 @@
+{
+  "$status": "Vertical landmarks set from standard adult-female anthropometry as fractions of stature (2026-08-10) — they are no longer guesses and should not be nudged by eye. Circumferences are a standard size for this height. $fromThupten still marks anything he has confirmed for Ü-Tsang specifically.",
+  "$proportions": "Fractions of stature used, from standard anthropometric tables: chin 0.870, shoulder (acromion) 0.818, bust 0.720, underbust 0.700, waist 0.620, hip 0.520, knee 0.285, ankle 0.039. Head height is stature/7.7 — chin to crown — which is the realistic adult figure, not the 8-head heroic one.",
+  "$fromThupten": [],
+  "$unit": "cm, measured from the floor with the figure standing",
+  "$worldScale": "cm per solver world unit. The solver's approved feel is tuned at particle spacing 1.0, so cloth resolution is worldScale cm between particles. 2.5 cm is a normal garment-sim resolution.",
+  "worldScale": 2.5,
+
+  "$notes": {
+    "height": "Total including head, floor to crown.",
+    "floorToChin": "Chin height, 0.870 of stature. The neck must STOP here — it ran past the chin and read as a giraffe.",
+    "floorToNeckBase": "Top ring of the torso lathe: where the neck emerges from the trapezius. NOT the anthropometric cervicale (0.828), which sits about level with the shoulder point — using that flattened her shoulders into a square slab. The gap between this and floorToShoulder over the half-width between them IS the shoulder slope, and it should come out around 21 degrees, the same slope the garment is drafted to.",
+    "headWidth": "Head breadth in front view. The dress form has no head for the solver; this is for drawing one at the right size.",
+    "floorToWaist": "Where the belt sits. The single most important number on this list: it sets the pinned/free boundary, so it decides how much of the garment simulates at all.",
+    "floorToHip": "Fullest part of the seat. Sets where the skirt stops touching and starts hanging.",
+    "shoulderWidth": "Across the back, point to point. Sets strap placement on a sleeveless chupa.",
+    "depthRatio": "Cross-sections are ellipses, not circles: depth divided by width at each level. 1.0 would be a cylinder-round body. These four control how the silhouette reads in three-quarter view and are pure guesswork on my part.",
+    "armSeparation": "Gap from the body centreline to each arm's axis. Arms are capsules; they only matter where the honju sleeve hangs against them. Must leave the arm inboard of the shoulder point — at shoulderWidth 37 the shoulder is 18.5 out, so an arm of ~4.3 radius wants an axis around 14. At 17 the sleeve stood proud of the shoulder and the outfit read wrong."
+  },
+
+  "height": 160,
+
+  "floorToAnkle": 6,
+  "floorToKnee": 45.5,
+  "floorToHip": 83,
+  "floorToWaist": 99,
+  "floorToUnderbust": 112,
+  "floorToBust": 115,
+  "floorToShoulder": 131,
+  "floorToNeckBase": 136,
+  "floorToChin": 139,
+  "headWidth": 14.5,
+
+  "neckCircumference": 33,
+  "shoulderWidth": 37,
+  "bustCircumference": 86,
+  "underbustCircumference": 74,
+  "waistCircumference": 70,
+  "hipCircumference": 92,
+  "thighCircumference": 52,
+  "kneeCircumference": 34,
+  "ankleCircumference": 22,
+
+  "armLength": 52,
+  "upperArmCircumference": 27,
+  "wristCircumference": 15,
+  "armSeparation": 14,
+
+  "depthRatio": {
+    "neck": 0.90,
+    "bust": 0.72,
+    "waist": 0.76,
+    "hip": 0.78
+  }
+}

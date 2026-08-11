@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pangden — @chupa/cloth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #16151a;
+    --bg-2: #1e1c23;
+    --bone: #e9e3d5;
+    --bone-dim: #9b958a;
+    --madder: #b3282d;
+    --line: #2e2c34;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--bone);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  header { padding: 18px 22px 10px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--madder); }
+  h1 { font-family: "Fraunces", serif; font-weight: 560; font-size: 26px; letter-spacing: 0.01em; }
+  h1 .tib { color: var(--bone-dim); font-weight: 400; }
+  #stage { flex: 1; position: relative; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas.grabbing { cursor: grabbing; }
+  #rod { position: absolute; height: 5px; border-radius: 3px; background: #4a4038; pointer-events: none; }
+  .hint {
+    position: absolute; left: 22px; bottom: 14px;
+    font-size: 11px; color: var(--bone-dim); letter-spacing: 0.06em; pointer-events: none;
+    transition: opacity 1.2s;
+  }
+  .readout {
+    position: absolute; right: 22px; top: 14px; text-align: right;
+    font-size: 10.5px; color: var(--bone-dim); line-height: 1.7; pointer-events: none;
+  }
+  .readout b { color: var(--bone); font-weight: 500; }
+  footer {
+    border-top: 1px solid var(--line);
+    background: var(--bg-2);
+    padding: 12px 22px 16px;
+    display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  }
+  .fabrics { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    background: none; border: 1px solid var(--line); border-radius: 8px;
+    color: var(--bone); font-family: inherit; font-size: 12px;
+    padding: 8px 12px 7px; cursor: pointer; text-align: left;
+    transition: border-color .15s, background .15s;
+  }
+  .chip small { display: block; color: var(--bone-dim); font-size: 10px; margin-top: 2px; }
+  .chip:hover { border-color: var(--bone-dim); }
+  .chip.on { border-color: var(--madder); background: rgba(179, 40, 45, 0.10); }
+  .grow { flex: 1; }
+  .params { font-size: 10.5px; color: var(--bone-dim); line-height: 1.7; white-space: nowrap; }
+  .params b { color: var(--bone); font-weight: 500; }
+  .breeze { display: flex; align-items: center; gap: 10px; min-width: 190px; }
+  .breeze label { font-size: 11px; color: var(--bone-dim); }
+  .breeze output { font-size: 11px; color: var(--bone); min-width: 3ch; text-align: right; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 110px; height: 3px; border-radius: 2px;
+    background: var(--line); outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 15px; height: 15px; border-radius: 50%;
+    background: var(--bone); border: 2px solid var(--bg-2); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--bone); border: 2px solid var(--bg-2); cursor: pointer;
+  }
+  .tbtn {
+    background: none; border: 1px solid var(--line); border-radius: 8px;
+    color: var(--bone-dim); font-family: inherit; font-size: 11px;
+    padding: 7px 11px; cursor: pointer;
+  }
+  .tbtn:hover { color: var(--bone); border-color: var(--bone-dim); }
+  .tbtn.on { color: var(--madder); border-color: var(--madder); }
+  @media (max-width: 660px) {
+    header { padding: 14px 16px 8px; }
+    h1 { font-size: 20px; }
+    footer { padding: 10px 14px 14px; gap: 10px; }
+    .params, .readout { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="eyebrow">Chupa designer · phase one · @chupa/cloth</div>
+    <h1>Pangden <span class="tib">པང་གདན་</span></h1>
+  </div>
+</header>
+
+<div id="stage">
+  <canvas id="c"></canvas>
+  <div id="rod"></div>
+  <div class="readout" id="readout"></div>
+  <div class="hint" id="hint">drag the cloth · flick it · slide the breeze</div>
+</div>
+
+<footer>
+  <div class="fabrics" id="fabrics"></div>
+  <div class="grow"></div>
+  <div class="params" id="params"></div>
+  <div class="breeze">
+    <label for="wind">breeze</label>
+    <input type="range" id="wind" min="0" max="100" step="1" value="45">
+    <output id="windOut">45</output>
+  </div>
+  <button class="tbtn" id="strainBtn" title="Opt-in Provot strain limiting at 1%">strain 1%</button>
+  <button class="tbtn" id="resetBtn">reset</button>
+</footer>
+
+<script type="module" src="./main.ts"></script>
+</body>
+</html>

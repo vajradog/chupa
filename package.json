@@ -1,0 +1,23 @@
+{
+  "name": "chupa-designer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Chupa Designer — colors and materials on a physically simulated Ü-Tsang chupa.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "app"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @chupa/app",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  }
+}
