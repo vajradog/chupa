@@ -18,7 +18,8 @@ import {
 import type { Fabric } from '@chupa/cloth';
 import {
   GARMENT_SPEC, PANGDEN_REGIONS, buildFlatChupa, harmoniesFor, hexToHsl, hslToHex,
-  nearestNamed, dyesInProgram, pangdenHex, pangdenRegion, tuneDyes, weavePangden,
+  nearestNamed, dyesInProgram, hexToOklch, pangdenHex, pangdenRegion, tuneDyes,
+  weavePangden,
 } from '@chupa/garment';
 import type { FlatRegion, GarmentSpec } from '@chupa/garment';
 
@@ -121,13 +122,33 @@ function currentSpec(): GarmentSpec {
   };
 }
 
-// Lightest first: the list reads as a scale of weight, which is the thing that
-// actually distinguishes these cloths.
 void MATERIAL_KEYS;
-let material: Fabric = FABRICS.silk;
-// The honju is its own cloth. It only changes how the sleeves and collar CATCH
-// THE LIGHT here — the chupa's cloth is the one that governs the cut.
-let honjuMaterial: Fabric = FABRICS.charmeuse;
+/**
+ * The three cloths, fixed. Not offered, and the reason is worth keeping.
+ *
+ * A picker was built for the chupa and the honju and then removed (Thupten,
+ * 2026-08-11) because it was confusing rather than useful. The honju's cloth is
+ * the clearer half of the argument: nothing of the honju is simulated — it
+ * shows at the collar and the cuffs, where material changes only how it catches
+ * the light — so a control offering four cloths that visibly do nothing is
+ * worse than no control.
+ *
+ * The chupa's cloth did do something, once `setFabric` was actually called on
+ * the solver: swing amplitude tracks weight cleanly, about 2× from charmeuse to
+ * nambu. But the only place it shows is during the second or two after a drop,
+ * and you have to be watching. That is not enough surface for a choice.
+ *
+ * WHAT THIS COSTS. The brief's decision 5 says material change is a live
+ * physics event and the single most shareable moment in the product. There is
+ * now nowhere in the app that moment can happen. The fabric presets, the
+ * solver's response to them, and the settle tests are all still here and all
+ * still right — what is missing is a garment whose SHAPE answers to weight, and
+ * this one cannot: `waistGatherRatio` is 1, so there is no surplus to fold and
+ * no silhouette for weight to change. The moment needs the 3D turntable, or a
+ * gathered garment, not another dropdown.
+ */
+const material: Fabric = FABRICS.silk;
+const honjuMaterial: Fabric = FABRICS.charmeuse;
 // The pangden is not silk and never was: it is hand-woven wool, from the finer
 // valley fleece (yulphel) rather than the highland rug wool. It catches the
 // light quite differently from the cloths either side of it, which is part of
@@ -596,10 +617,11 @@ let W = 0, H = 0, DPR = 1, pxPerCm = 1, originX = 0, floorY = 0;
 const sx = (cm: number) => originX + cm * pxPerCm;
 const sy = (cm: number) => floorY - cm * pxPerCm;
 
+const stageEl = document.getElementById('stage') as HTMLElement;
+
 function resize() {
-  const stage = document.getElementById('stage') as HTMLElement;
   DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = stage.clientWidth; H = stage.clientHeight;
+  W = stageEl.clientWidth; H = stageEl.clientHeight;
   cv.width = W * DPR; cv.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   pxPerCm = (H * 0.92) / HEIGHT_CM;
@@ -608,6 +630,18 @@ function resize() {
   draw();
 }
 window.addEventListener('resize', resize);
+
+/**
+ * A page that loads with no size has to notice when it gets one.
+ *
+ * Opened in a background tab the stage measures 0×0, so the canvas is 0×0, so
+ * the off-screen shading layer is too — and `drawImage` from a zero-sized
+ * canvas throws, which killed the whole draw. Switching to the tab fires no
+ * resize event, so it stayed dead: a blank room, and a thrown exception as the
+ * only clue. Observing the stage catches the 0 → real transition that `resize`
+ * alone never hears about.
+ */
+new ResizeObserver(() => { if (stageEl.clientWidth > 0) resize(); }).observe(stageEl);
 
 /** Screen position of a point on the garment, moved by the cloth under it. */
 const gx = (xCm: number, yCm: number) => sx(xCm) + clothOffset(xCm, yCm)[0] * pxPerCm;
@@ -871,6 +905,8 @@ const fctx = foldLayer.getContext('2d')!;
 
 function drawCloth() {
   const cloth = material;
+  // Nothing to shade, and `drawImage` from a zero-sized canvas throws.
+  if (cv.width === 0 || cv.height === 0) return;
   if (foldLayer.width !== cv.width || foldLayer.height !== cv.height) {
     foldLayer.width = cv.width;
     foldLayer.height = cv.height;
@@ -1265,25 +1301,11 @@ const pgWeaveEl = document.getElementById('pgweave') as HTMLCanvasElement;
 const pgStyleEl = document.getElementById('pgStyle') as HTMLSelectElement;
 const dyeHost = document.getElementById('dyes') as HTMLElement;
 const dyeLabel = document.getElementById('dyeLabel') as HTMLElement;
-const dyeReset = document.getElementById('dyeReset') as HTMLButtonElement;
-const dyeTune = document.getElementById('dyeTune') as HTMLButtonElement;
 const tabCloth = document.getElementById('tabCloth') as HTMLButtonElement;
 const tabPangden = document.getElementById('tabPangden') as HTMLButtonElement;
 const paneCloth = document.getElementById('paneCloth') as HTMLElement;
 const panePangden = document.getElementById('panePangden') as HTMLElement;
 
-/**
- * What each dye letter is, so a chip can say it.
- *
- * The dye rather than the colour: `R` is madder, and madder is a plant, which
- * is the honest name for what coloured the cloth. Once a letter has been moved
- * off that colour it stops claiming to be the plant — see `.dye.moved`.
- */
-const DYE_NAME: Record<string, string> = {
-  R: 'Madder', O: 'Rhubarb root', Y: 'Barberry', G: 'Indigo over yellow',
-  T: 'Deep over-dye', B: 'Indigo', M: 'Lac', N: 'Walnut',
-  W: 'Undyed', K: 'Walnut on indigo',
-};
 
 const dyeEls = new Map<string, HTMLElement>();
 
@@ -1297,9 +1319,70 @@ pgStyleEl.value = pangdenStyle;
 
 const dyeHex = (letter: string): string => pangdenDyes[letter] ?? pangdenHex(letter);
 
+/**
+ * Which colour sits at which place in the weave.
+ *
+ * The apron's colours come from matching it to the outfit, and its ORDER comes
+ * from you — drag a chip and that colour moves along the cloth. Those are two
+ * separate things, so they are stored separately: `dyeOrder` is a permutation
+ * that says slot i wears the colour originally worked out for slot `dyeOrder[i]`,
+ * and it survives every re-match. Otherwise picking a new chupa colour would
+ * silently undo an arrangement you had just made.
+ *
+ * `dyeAuto` is what matching produced, by letter. `dyeByHand` is anything you
+ * turned the wheel on, keyed by ORIGINAL index so that a hand-picked colour
+ * travels with its chip when you drag it rather than staying put.
+ */
+let dyeOrder: number[] = [];
+let dyeAuto: Record<string, string> = {};
+let dyeByHand: Record<number, string> = {};
+
+const dyeLetters = (): string[] => dyesInProgram(currentSpec().pangden.stripeProgram);
+
+/** A different apron has different dyes, so the old arrangement means nothing. */
+function resetDyeOrder(n: number) {
+  dyeOrder = Array.from({ length: n }, (_, i) => i);
+  dyeByHand = {};
+}
+
+/** Fold order, matching and hand-picks into the one map the weave reads. */
+function composeDyes() {
+  const letters = dyeLetters();
+  if (dyeOrder.length !== letters.length) resetDyeOrder(letters.length);
+  const base = letters.map((l) => dyeAuto[l] ?? pangdenHex(l));
+  const out: Record<string, string> = {};
+  letters.forEach((l, i) => {
+    const from = dyeOrder[i];
+    out[l] = dyeByHand[from] ?? base[from];
+  });
+  pangdenDyes = out;
+}
+
 function setDye(letter: string, hex: string) {
-  pangdenDyes = { ...pangdenDyes, [letter]: hex };
+  const i = dyeLetters().indexOf(letter);
+  if (i >= 0) dyeByHand[dyeOrder[i]] = hex;
+  composeDyes();
   refreshDyes();
+  rebuild();
+}
+
+/**
+ * Move the colour at one slot to another, and let the cloth follow.
+ *
+ * `rerender` is false while a drag is in progress, and that is not an
+ * optimisation. `refreshDyes` empties the container and builds the chips again,
+ * which DESTROYS THE ELEMENT UNDER THE FINGER — the drag then had nothing to
+ * hold, so the lift disappeared and no second swap could ever land. Nothing
+ * needs rebuilding anyway: the chip that was dragged into a slot is already
+ * showing the colour that slot now takes, so the DOM is correct without being
+ * thrown away. The chips are rebuilt once, when the hand comes off.
+ */
+function moveDye(from: number, to: number, rerender = true) {
+  if (from === to || from < 0 || to < 0 || to >= dyeOrder.length) return;
+  const [held] = dyeOrder.splice(from, 1);
+  dyeOrder.splice(to, 0, held);
+  composeDyes();
+  if (rerender) refreshDyes();
   rebuild();
 }
 
@@ -1351,51 +1434,60 @@ function refreshDyes() {
     dyeLabel.innerHTML = '<span class="think"><i class="spin"></i>Working out an apron'
       + ' for this outfit…</span>';
     dyeHost.innerHTML = ('<span class="dye ghost"><i></i><span class="dn"></span>'
-      + '<span class="dw"></span><span class="dhex"></span></span>').repeat(letters.length);
-    dyeTune.hidden = true;
-    dyeReset.hidden = true;
+      + '<span class="dhex"></span></span>').repeat(letters.length);
     return;
   }
 
-  // Once a dye has been moved, the cloth is no longer what that region weaves,
-  // and the panel says so. Sakya re-dyed is a fine apron; calling it Sakya is a
-  // claim about a place.
-  const moved = Object.keys(pangdenDyes).length > 0;
-  dyeLabel.innerHTML = moved
-    ? `Its dyes <span class="hint">— ${pangdenStyle}, re-dyed</span>`
-    : 'Its dyes <span class="hint">— tap one to change it</span>';
-  dyeTune.hidden = false;
+  dyeLabel.innerHTML = 'Its dyes <span class="hint">— tap one to change it</span>';
   for (const letter of letters) {
     const hex = dyeHex(letter);
-    const moved = letter in pangdenDyes;
     const b = document.createElement('button');
-    b.className = `dye${moved ? ' moved' : ''}${activeDye === letter ? ' on' : ''}`;
+    b.className = `dye${activeDye === letter ? ' on' : ''}`;
     b.innerHTML = `<i style="background:${hex}"></i>`
       + `<span class="dn">${nearestNamed(hex)[0]}</span>`
-      + `<span class="dw">${moved ? 'moved' : DYE_NAME[letter] ?? letter}</span>`
       + `<span class="dhex">${hex.toUpperCase()}</span>`;
     b.onclick = () => openDyePicker(letter);
     dyeHost.appendChild(b);
     dyeEls.set(letter, b);
   }
-  dyeReset.hidden = Object.keys(pangdenDyes).length === 0;
   drawPangdenChip();
 }
 
 /**
- * Tune the apron to what she has on.
+ * Match the apron to what she has on. Not asked for — just done.
  *
- * Not a match — see `tuneDyes`. The ground goes opposite the chupa, everything
- * else turns through the same angle so the weave keeps its character, one
- * accent echoes the honju, and the undyed bands stay undyed.
+ * There was a "tune to the outfit" button and a "the dyes it was woven with"
+ * button beside it. Both are gone (Thupten, 2026-08-11): the first was a step
+ * between wanting the thing and having it, and the second offered to restore
+ * dyestuffs this project cannot actually claim to know. The apron simply
+ * follows the outfit now.
  */
 function applyTune() {
   dyeThinking = false;
   clearTimeout(dyeTimer);
-  pangdenDyes = tuneDyes(currentSpec().pangden.stripeProgram, chupaColour, honjuColour);
+  matchedTo = '';
+  matchPangdenToOutfit();
+  kiss(0.7);
+}
+
+/**
+ * Re-match whenever the outfit or the apron has changed under it.
+ *
+ * Keyed, so it runs once per actual change rather than on every repaint — and
+ * so a dye you tapped by hand survives until the thing it was matched TO moves.
+ * Called from `refreshCards`, which runs on release rather than on every sample
+ * of a wheel drag, so the apron settles when your hand stops.
+ */
+let matchedTo = '';
+function matchPangdenToOutfit() {
+  if (!showPangden || dyeThinking) return;
+  const key = `${pangdenStyle}:${chupaColour}:${honjuColour}`;
+  if (key === matchedTo) return;
+  matchedTo = key;
+  dyeAuto = tuneDyes(currentSpec().pangden.stripeProgram, chupaColour, honjuColour);
+  composeDyes();
   refreshDyes();
   rebuild();
-  kiss(0.7);
 }
 
 function tuneWithBeat() {
@@ -1405,8 +1497,6 @@ function tuneWithBeat() {
   refreshDyes();
   dyeTimer = window.setTimeout(applyTune, THINK_MS);
 }
-
-dyeTune.onclick = () => { closeDyePicker(); refreshCards(); tuneWithBeat(); };
 
 function openDyePicker(letter: string) {
   markPicked();
@@ -1424,14 +1514,6 @@ function closeDyePicker() {
   pickerOpen = false;
 }
 
-dyeReset.onclick = () => {
-  pangdenDyes = {};
-  closeDyePicker();
-  refreshDyes();
-  refreshCards();
-  rebuild();
-  kiss(0.7);
-};
 
 function showTab(which: 'cloth' | 'pangden') {
   const pangden = which === 'pangden' && showPangden;
@@ -1464,7 +1546,9 @@ tabPangden.onclick = () => showTab('pangden');
 function setPangdenStyle(name: string) {
   pangdenStyle = name;
   pgStyleEl.value = name;
+  resetDyeOrder(dyeLetters().length);
   refreshPangden();
+  matchPangdenToOutfit();
   rebuild();
   kiss(0.6);
 }
@@ -1502,7 +1586,8 @@ const cardEls: Record<Slot, HTMLElement> = {
 };
 const harmonyHost = document.getElementById('harmony') as HTMLElement;
 const harmonyLabel = document.getElementById('harmonyLabel') as HTMLElement;
-const pickerEl = document.getElementById('picker') as HTMLElement;
+/** The animatable wrapper. It is what moves; the wheel just rides in it. */
+const pickerSlot = document.getElementById('pickerslot') as HTMLElement;
 /** The wheel belongs to a card, and only while that card is open. */
 let pickerOpen = false;
 const pickHint = document.getElementById('pickhint') as HTMLElement;
@@ -1534,52 +1619,38 @@ function setTarget(hex: string) {
 }
 
 /**
- * What the wheel is pointing at on screen — a garment card, or a dye chip.
+ * What the wheel is pointing at — a garment card, or the dye grid.
  *
- * It is POSITIONED against this, never moved into it. Moving it was the bug:
- * `activeDye` and `activeSlot` are separate pieces of state, so opening a
- * garment card while a dye was still active put the wheel under the pangden
- * chips and edited the apron. The anchor cannot disagree with the target now
- * because both come from the same two lines below.
+ * The slot is MOVED to sit after this, so the wheel drops out of the thing it
+ * belongs to and pushes whatever is below it down. `activeDye` and `activeSlot`
+ * are separate pieces of state, and the two must never disagree: opening a
+ * garment card while a dye was still active used to leave the wheel aimed at
+ * the dye and quietly re-dye the apron. Both the anchor and the target come
+ * from these two lines, so they cannot.
+ *
+ * After the whole dye GRID rather than the chip you tapped — the chips wrap,
+ * and a full-width wheel between two of them forces a new row, which pushed the
+ * third chip below the wheel and out of sight.
  */
 function pickerAnchor(): HTMLElement {
-  return (activeDye ? dyeEls.get(activeDye) : cardEls[activeSlot]) ?? cardEls[activeSlot];
+  return activeDye ? dyeHost : cardEls[activeSlot];
 }
 
-/**
- * Put the wheel beside whatever opened it.
- *
- * Below the anchor by default, above it when there is no room below, and always
- * inside the viewport. Fixed positioning, so a panel's `overflow: auto` cannot
- * clip it and a wrapping grid cannot squeeze it into a 74px column.
- */
-const PICKER_GAP = 8;
-function positionPicker() {
-  if (!pickerOpen) return;
-  const a = pickerAnchor().getBoundingClientRect();
-  const w = pickerEl.offsetWidth || 208;
-  const h = pickerEl.offsetHeight || 260;
-  const room = window.innerHeight - a.bottom;
-  const top = room >= h + PICKER_GAP || a.top < h + PICKER_GAP
-    ? Math.min(a.bottom + PICKER_GAP, window.innerHeight - h - 8)
-    : a.top - h - PICKER_GAP;
-  const left = Math.min(
-    Math.max(8, a.left + a.width / 2 - w / 2),
-    window.innerWidth - w - 8,
-  );
-  pickerEl.style.left = `${Math.round(left)}px`;
-  pickerEl.style.top = `${Math.round(Math.max(8, top))}px`;
+/** Park the wheel under whatever opened it, and open or shut the slot. */
+function placePicker() {
+  const anchor = pickerAnchor();
+  // Only when it is not already there. Re-inserting a node drops any pointer
+  // capture on the canvas inside it, which killed drags mid-turn.
+  if (pickerSlot.previousElementSibling !== anchor) anchor.after(pickerSlot);
+  pickerSlot.classList.toggle('open', pickerOpen);
+  pickerSlot.setAttribute('aria-hidden', String(!pickerOpen));
 }
-
-/** A popover follows what it is attached to, or it lies about what it edits. */
-addEventListener('scroll', positionPicker, true);
-addEventListener('resize', positionPicker);
 
 /** Anywhere else, and it goes away. */
 addEventListener('pointerdown', (ev) => {
   if (!pickerOpen) return;
   const t = ev.target as Node;
-  if (pickerEl.contains(t)) return;
+  if (pickerSlot.contains(t)) return;
   if (cardEls.chupa.contains(t) || cardEls.honju.contains(t) || dyeHost.contains(t)) return;
   closePicker();
 }, true);
@@ -1693,10 +1764,6 @@ function drawWheel(l: number) {
  * those are gone it belongs on the card, which is the one place the garment is
  * described.
  */
-const CLOTH_LABEL: Record<Slot, string> = {
-  chupa: 'Silk brocade · 180 gsm',
-  honju: 'Silk charmeuse · 85 gsm',
-};
 
 /**
  * Just the colour: swatches, names, codes, and the wheel's marker.
@@ -1712,7 +1779,11 @@ function paintCards() {
     (el.querySelector('.swatch') as HTMLElement).style.background = hex;
     (el.querySelector('.cname') as HTMLElement).textContent = nearestNamed(hex)[0];
     (el.querySelector('.ctone') as HTMLElement).textContent = describe(hex);
-    (el.querySelector('.cloth-line') as HTMLElement).textContent = CLOTH_LABEL[slot];
+    // The garment's name sits on its cloth, so it has to stay legible against
+    // whatever that cloth is. Oklab L is perceived lightness, so one threshold
+    // works for every hue — a 0.62 madder takes bone, a 0.90 blush takes ink.
+    (el.querySelector('.slotname') as HTMLElement).style.color =
+      hexToOklch(hex).l > 0.62 ? 'rgba(47,42,37,0.72)' : 'rgba(255,253,249,0.86)';
     (el.querySelector('.hex') as HTMLElement).textContent = hex.toUpperCase();
     el.classList.toggle('on', slot === activeSlot);
     el.classList.toggle('open', slot === activeSlot && pickerOpen);
@@ -1728,8 +1799,7 @@ function refreshCards() {
   // Only when it is not already there. `after()` is a remove-and-reinsert even
   // when the node is a no-op away from where it already is, and taking the
   // canvas out of the document drops any pointer capture on it.
-  pickerEl.hidden = !pickerOpen;
-  positionPicker();
+  placePicker();
   pickHint.textContent = activeDye
     ? `turn the wheel to re-dye the ${nearestNamed(dyeHex(activeDye))[0].toLowerCase()} bands`
     : (activeSlot === 'chupa'
@@ -1743,6 +1813,7 @@ function refreshCards() {
   drawWheel(hexToHsl(targetHex()).l);
 
   refreshHarmonies();
+  matchPangdenToOutfit();
 }
 
 // --- Working out the honju -------------------------------------------------
@@ -2054,6 +2125,187 @@ toggle('sleeveBtn', () => showSleeves, (v) => { showSleeves = v; });
 toggle('figureBtn', () => showFigure, (v) => { showFigure = v; });
 toggle('gridBtn', () => showGrid, (v) => { showGrid = v; });
 toggle('edgeBtn', () => showEdges, (v) => { showEdges = v; });
+
+// --- Dragging a dye along the apron ----------------------------------------
+//
+// Not cosmetic. The chips are the colours of the weave in the order they run up
+// the cloth, so dropping one somewhere else moves that colour on her.
+//
+// THE DOM DOES NOT CHANGE WHILE YOU DRAG. That is the whole design, and the
+// first two attempts got it wrong. They reordered the chips on every swap and
+// then animated from the old layout to the new one, which meant each swap
+// re-measured every chip, restarted animations that were already running, and —
+// worst — rebuilt the element under the finger. Constants were tuned against
+// the symptoms: a lock so swaps could not fire too often, an inset so they
+// could not fire at the edges. All of it was working around a moving floor.
+//
+// So: measure every chip's resting place ONCE, when the drag starts. From then
+// on the held chip follows the pointer, and the others are translated into the
+// gaps with a plain CSS transition — the compositor does that, and it cannot
+// stutter. Where the chip would land is a pure function of where the pointer is
+// (the nearest resting place), so it cannot oscillate and needs no hysteresis
+// and no lock. The order is committed once, on release.
+const EASE = 'cubic-bezier(.22,.61,.36,1)';
+/** Far enough to mean a drag rather than a shaky tap. */
+const DRAG_SLOP = 6;
+/** A held chip is drawn slightly larger. */
+const LIFT = 1.045;
+/** How long a displaced chip takes to slide out of the way. */
+const SLIDE_MS = 200;
+
+const chips = (): HTMLElement[] => Array.from(dyeHost.querySelectorAll('.dye')) as HTMLElement[];
+
+/** Where each chip rests, measured once at the start of a drag. */
+interface Resting { el: HTMLElement; left: number; top: number; cx: number; cy: number; }
+
+let slots: Resting[] = [];
+let heldIndex = -1;
+let landsAt = -1;
+let chipPointer = -1;
+let chipFrom = { x: 0, y: 0 };
+let chipDelta = { x: 0, y: 0 };
+let chipDragging = false;
+/** Set when a drag happened, so the click that follows does not open the wheel. */
+let suppressClick = false;
+
+const place = (el: HTMLElement, x: number, y: number) => {
+  el.style.transform = `translate(${x}px, ${y}px) scale(${LIFT})`;
+};
+
+/**
+ * Which resting place the pointer is nearest.
+ *
+ * Nearest-centre rather than "which chip am I over": it is defined everywhere,
+ * including in the gaps and past the end of the row, and it depends only on the
+ * pointer — so the answer never depends on what the last answer was. That is
+ * what makes the shuffling impossible rather than merely unlikely.
+ */
+function nearestSlot(x: number, y: number): number {
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < slots.length; i++) {
+    const dx = x - slots[i].cx;
+    const dy = y - slots[i].cy;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+/** Shift everything between the chip's old place and where it would land. */
+function openTheGap() {
+  for (let i = 0; i < slots.length; i++) {
+    if (i === heldIndex) continue;
+    let goesTo = i;
+    if (landsAt > heldIndex && i > heldIndex && i <= landsAt) goesTo = i - 1;
+    else if (landsAt < heldIndex && i >= landsAt && i < heldIndex) goesTo = i + 1;
+    const dx = slots[goesTo].left - slots[i].left;
+    const dy = slots[goesTo].top - slots[i].top;
+    slots[i].el.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : '';
+  }
+}
+
+dyeHost.addEventListener('pointerdown', (ev) => {
+  const chip = (ev.target as HTMLElement).closest('.dye') as HTMLElement | null;
+  if (!chip || chip.classList.contains('ghost')) return;
+  const list = chips();
+  heldIndex = list.indexOf(chip);
+  if (heldIndex < 0) return;
+  slots = list.map((el) => {
+    const b = el.getBoundingClientRect();
+    return { el, left: b.left, top: b.top, cx: b.left + b.width / 2, cy: b.top + b.height / 2 };
+  });
+  landsAt = heldIndex;
+  chipPointer = ev.pointerId;
+  chipFrom = { x: ev.clientX, y: ev.clientY };
+  chipDelta = { x: 0, y: 0 };
+  chipDragging = false;
+});
+
+addEventListener('pointermove', (ev) => {
+  if (heldIndex < 0 || ev.pointerId !== chipPointer) return;
+  chipDelta = { x: ev.clientX - chipFrom.x, y: ev.clientY - chipFrom.y };
+  const held = slots[heldIndex].el;
+
+  if (!chipDragging) {
+    if (Math.hypot(chipDelta.x, chipDelta.y) < DRAG_SLOP) return;
+    chipDragging = true;
+    held.classList.add('lifted');
+    // Throws for a pointer id the browser does not know about, and that must
+    // not take the drag down with it.
+    try { held.setPointerCapture(chipPointer); } catch { /* not a live pointer */ }
+    // Only the others glide. The held one is placed directly, every frame.
+    for (const s of slots) {
+      if (s.el !== held) s.el.style.transition = `transform ${SLIDE_MS}ms ${EASE}`;
+    }
+  }
+  ev.preventDefault();
+  place(held, chipDelta.x, chipDelta.y);
+
+  const want = nearestSlot(ev.clientX, ev.clientY);
+  if (want !== landsAt) { landsAt = want; openTheGap(); }
+}, { passive: false });
+
+function endChipDrag(ev: PointerEvent) {
+  if (heldIndex < 0 || ev.pointerId !== chipPointer) return;
+  const held = slots[heldIndex].el;
+  const from = heldIndex;
+  const to = landsAt;
+  const dragged = { ...chipDelta };
+  const wasDragging = chipDragging;
+  heldIndex = -1;
+  chipPointer = -1;
+  chipDragging = false;
+  if (!wasDragging) { slots = []; return; }
+  suppressClick = true;
+
+  // Where it looked like it was, the instant before letting go.
+  const startLeft = slots[from].left + dragged.x;
+  const startTop = slots[from].top + dragged.y;
+
+  for (const s of slots) { s.el.style.transition = ''; s.el.style.transform = ''; }
+  slots = [];
+
+  if (to !== from) {
+    const rest = chips().filter((c) => c !== held);
+    if (to >= rest.length) dyeHost.appendChild(held);
+    else dyeHost.insertBefore(held, rest[to]);
+    moveDye(from, to, false);
+  }
+
+  // Land it: from where it appeared to be, to where it now belongs.
+  const now = held.getBoundingClientRect();
+  const settle = held.animate(
+    [
+      {
+        transform: `translate(${startLeft - now.left}px, ${startTop - now.top}px) scale(${LIFT})`,
+      },
+      { transform: 'none' },
+    ],
+    { duration: 240, easing: EASE },
+  );
+  settle.addEventListener('finish', () => {
+    held.classList.remove('lifted');
+    // Rebuilt once, now that there is no hand on it.
+    refreshDyes();
+  });
+}
+addEventListener('pointerup', endChipDrag);
+addEventListener('pointercancel', endChipDrag);
+
+// A drag that ends where no click follows would leave the flag armed and eat
+// the next real one. The press that starts the NEXT gesture always comes after
+// the click this is meant to swallow, so clearing it here makes it last exactly
+// one gesture.
+addEventListener('pointerdown', () => { suppressClick = false; }, true);
+
+/** A drag is not a click: dropping a dye must not also open the wheel on it. */
+addEventListener('click', (ev) => {
+  if (!suppressClick) return;
+  suppressClick = false;
+  ev.preventDefault();
+  ev.stopPropagation();
+}, true);
 
 refreshCards();
 resize();
