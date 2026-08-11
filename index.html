@@ -481,7 +481,7 @@
     .cname { font-size: 17px; }
   }
 </style>
-  <script type="module" crossorigin src="./assets/index-SEad4Q4L.js"></script>
+  <script type="module" crossorigin src="./assets/index-BOgX5nMY.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/fabric-DBm3_4uc.js">
   <link rel="modulepreload" crossorigin href="./assets/form-9glueAcb.js">
   <link rel="modulepreload" crossorigin href="./assets/solver-Dw5mHJET.js">
@@ -528,7 +528,9 @@
            apron's colour, you choose an apron. Ticking it opens a panel of its
            own across the room. -->
       <label class="pgcheck">
-        <input type="checkbox" id="pgOn" checked>
+        <!-- Unchecked in the markup as well as in the script, so the box is
+             never briefly ticked before the first paint corrects it. -->
+        <input type="checkbox" id="pgOn">
         <span class="pgname">Pangden</span>
         <span class="hint">the striped apron</span>
       </label>
