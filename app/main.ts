@@ -17,7 +17,8 @@ import {
 } from '@chupa/cloth';
 import type { Fabric } from '@chupa/cloth';
 import {
-  GARMENT_SPEC, buildFlatChupa, harmoniesFor, hexToHsl, hslToHex, nearestNamed,
+  GARMENT_SPEC, PANGDEN_REGIONS, buildFlatChupa, harmoniesFor, hexToHsl, hslToHex,
+  nearestNamed, dyesInProgram, pangdenHex, pangdenRegion, tuneDyes, weavePangden,
 } from '@chupa/garment';
 import type { FlatRegion, GarmentSpec } from '@chupa/garment';
 
@@ -67,11 +68,46 @@ for (const k of KNOBS) {
   live[k.group][k.key] = (GARMENT_SPEC[k.group] as unknown as Record<string, number>)[k.key];
 }
 
+/**
+ * The pangden is its own garment, and optional.
+ *
+ * Not a detail of the chupa — a separate thing, woven by different people from
+ * different wool, tied on last. It also carries a meaning the other two do not:
+ * traditionally the apron is worn by married women. That is stated where it is
+ * useful and it gates nothing — the toggle is a toggle, labelled for the
+ * garment rather than for the wearer's marital status.
+ *
+ * Declared up here with the rest of the module's state, and not down beside its
+ * card, because `currentSpec` reads it and `currentSpec` runs while this file is
+ * still evaluating. Below the first call it is a temporal dead zone and the
+ * whole page dies on load — which `tsc` will not tell you, since using a `let`
+ * before its declaration is only an error at runtime.
+ */
+let showPangden = true;
+let pangdenStyle = 'Tingri';
+/**
+ * Letter to hex, holding only the dyes that have been moved off their plant.
+ *
+ * Up here with the other early state for the same reason as the two above it:
+ * the first `buildFlatChupa` runs while this file is still evaluating, and a
+ * `let` read before its declaration is a dead page that `tsc` will not warn
+ * about.
+ */
+let pangdenDyes: Record<string, string> = {};
+
 function currentSpec(): GarmentSpec {
+  // The chosen region's weave replaces the one in panels.json. That file keeps
+  // a single stripe program because the shell needs one to build from; which
+  // apron she is wearing is a choice, not a property of the pattern.
+  const region = pangdenRegion(pangdenStyle);
   return {
     ...GARMENT_SPEC,
     chupa: { ...GARMENT_SPEC.chupa, ...live.chupa },
     honju: { ...GARMENT_SPEC.honju, ...live.honju },
+    pangden: {
+      ...GARMENT_SPEC.pangden,
+      ...(region ? { stripeProgram: region.stripeProgram } : {}),
+    },
   };
 }
 
@@ -82,10 +118,22 @@ let material: Fabric = FABRICS.silk;
 // The honju is its own cloth. It only changes how the sleeves and collar CATCH
 // THE LIGHT here — the chupa's cloth is the one that governs the cut.
 let honjuMaterial: Fabric = FABRICS.charmeuse;
+// The pangden is not silk and never was: it is hand-woven wool, from the finer
+// valley fleece (yulphel) rather than the highland rug wool. It catches the
+// light quite differently from the cloths either side of it, which is part of
+// why an apron reads as a separate thing tied on rather than as part of the
+// dress.
+const pangdenMaterial: Fabric = FABRICS.wool;
 
-let flat = buildFlatChupa(form, currentSpec(), material);
+/** Which cloth a region is cut from — they shade differently. */
+function materialFor(region: FlatRegion): Fabric {
+  if (region.garment === 'pangden') return pangdenMaterial;
+  return region.garment === 'chupa' ? material : honjuMaterial;
+}
+
+let flat = buildFlatChupa(form, currentSpec(), material, { pangdenDyes });
 function rebuild() {
-  flat = buildFlatChupa(form, currentSpec(), material);
+  flat = buildFlatChupa(form, currentSpec(), material, { pangdenDyes });
   measureSkirt();
   draw();
 }
@@ -611,7 +659,7 @@ function shade(hex: string, t: number): string {
  * rather than a paper doll: lit from the left, falling off toward each edge.
  */
 function clothFill(region: FlatRegion, base: string): CanvasGradient {
-  const cloth = region.garment === 'chupa' ? material : honjuMaterial;
+  const cloth = materialFor(region);
   let minX = Infinity, maxX = -Infinity;
   for (const [x] of region.outline) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
   const g = ctx.createLinearGradient(sx(minX), 0, sx(maxX), 0);
@@ -740,6 +788,7 @@ function visibleRegions(): FlatRegion[] {
     const isSleeve = region.name.startsWith('sleeve') || region.name.startsWith('cuff');
     if (isSleeve && !showSleeves) return false;
     if (region.name.startsWith('collar') && !showCollar) return false;
+    if (region.garment === 'pangden' && !showPangden) return false;
     return true;
   });
 }
@@ -843,7 +892,7 @@ function drawCloth() {
     const hCm = maxY - minY;
     if (wCm < 6 || hCm < 6) continue;   // collars and cuffs are too small to fold
 
-    const c = region.garment === 'chupa' ? material : honjuMaterial;
+    const c = materialFor(region);
     const gathered = region.name === 'skirt';
     const n = Math.max(3, Math.round((gathered ? 7 : 3) + c.fluidity * 7 - c.gsm / 90));
     // Quiet, then quieter. Cloth in a still room is mostly one colour with a
@@ -1000,7 +1049,9 @@ function draw() {
   castShadow();
 
   for (const region of visibleRegions()) {
-    const base = region.garment === 'honju' ? honjuColour : chupaColour;
+    // A pangden band carries its own dye. Every other region takes the
+    // colour chosen for its garment.
+    const base = region.colour ?? (region.garment === 'honju' ? honjuColour : chupaColour);
     tracePath(region.outline);
     ctx.closePath();
     ctx.fillStyle = clothFill(region, base);
@@ -1009,15 +1060,55 @@ function draw() {
     // cloth, which flat fills alone cannot do. Its weight is the cloth's own —
     // a cut edge in melton reads heavier than one in georgette. Kept lighter
     // than it was: at -0.55 every panel was outlined like a colouring book.
-    const cloth2 = region.garment === 'chupa' ? material : honjuMaterial;
-    ctx.strokeStyle = shade(base, -0.40);
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 0.9 + cloth2.thickness * 0.85;
-    ctx.stroke();
+    // NOT on a pangden band. That edge is for separating pieces of cloth from
+    // each other, and a band is not a piece — it is a stripe woven into one. An
+    // outline around each of them turned the apron into brickwork. The apron
+    // gets a single edge of its own, below.
+    if (region.garment !== 'pangden') {
+      const cloth2 = materialFor(region);
+      ctx.strokeStyle = shade(base, -0.40);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 0.9 + cloth2.thickness * 0.85;
+      ctx.stroke();
+    }
     if (showEdges) {
       ctx.strokeStyle = '#4fb0c6';
       ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  // One edge around the whole apron, now that its bands do not each carry one.
+  // Traced as the union of the bands rather than as a rectangle, because the
+  // apron narrows with the skirt it hangs on.
+  if (showPangden) {
+    const bands = flat.regions.filter((r) => r.garment === 'pangden');
+    if (bands.length > 0) {
+      const ys = bands.flatMap((r) => r.outline.map((p) => p[1]));
+      const top = Math.max(...ys);
+      const bot = Math.min(...ys);
+      const halfAt = (y: number) => Math.max(
+        ...bands.filter((r) => {
+          const rys = r.outline.map((p) => p[1]);
+          return Math.min(...rys) <= y + 1e-6 && Math.max(...rys) >= y - 1e-6;
+        }).flatMap((r) => r.outline.map((p) => Math.abs(p[0]))),
+        0,
+      );
+      const left: [number, number][] = [];
+      const right: [number, number][] = [];
+      const steps = 24;
+      for (let i = 0; i <= steps; i++) {
+        const y = bot + ((top - bot) * i) / steps;
+        const h = halfAt(y);
+        left.push([-h, y]);
+        right.push([h, y]);
+      }
+      tracePath([...right, ...left.reverse()]);
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(38,28,18,0.34)';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 1.1 + pangdenMaterial.thickness * 0.85;
       ctx.stroke();
     }
   }
@@ -1153,6 +1244,244 @@ comboEl.value = String(
 );
 paintCombo();
 
+// --- The pangden ----------------------------------------------------------
+//
+// Its own panel, behind its own tab, because it is its own garment: woven by
+// other people from other wool on another loom, and tied on last. The chupa and
+// the honju share a tab because they are chosen against each other; the apron
+// is not chosen against either.
+const pgOn = document.getElementById('pgOn') as HTMLInputElement;
+const pgWeaveEl = document.getElementById('pgweave') as HTMLCanvasElement;
+const pgStyleEl = document.getElementById('pgStyle') as HTMLSelectElement;
+const dyeHost = document.getElementById('dyes') as HTMLElement;
+const dyeLabel = document.getElementById('dyeLabel') as HTMLElement;
+const dyeReset = document.getElementById('dyeReset') as HTMLButtonElement;
+const dyeTune = document.getElementById('dyeTune') as HTMLButtonElement;
+const tabCloth = document.getElementById('tabCloth') as HTMLButtonElement;
+const tabPangden = document.getElementById('tabPangden') as HTMLButtonElement;
+const paneCloth = document.getElementById('paneCloth') as HTMLElement;
+const panePangden = document.getElementById('panePangden') as HTMLElement;
+
+/**
+ * What each dye letter is, so a chip can say it.
+ *
+ * The dye rather than the colour: `R` is madder, and madder is a plant, which
+ * is the honest name for what coloured the cloth. Once a letter has been moved
+ * off that colour it stops claiming to be the plant — see `.dye.moved`.
+ */
+const DYE_NAME: Record<string, string> = {
+  R: 'Madder', O: 'Rhubarb root', Y: 'Barberry', G: 'Indigo over yellow',
+  T: 'Deep over-dye', B: 'Indigo', M: 'Lac', N: 'Walnut',
+  W: 'Undyed', K: 'Walnut on indigo',
+};
+
+const dyeEls = new Map<string, HTMLElement>();
+
+for (const r of PANGDEN_REGIONS) {
+  const o = document.createElement('option');
+  o.value = r.name;
+  o.textContent = r.name;
+  pgStyleEl.appendChild(o);
+}
+pgStyleEl.value = pangdenStyle;
+
+const dyeHex = (letter: string): string => pangdenDyes[letter] ?? pangdenHex(letter);
+
+function setDye(letter: string, hex: string) {
+  pangdenDyes = { ...pangdenDyes, [letter]: hex };
+  refreshDyes();
+  rebuild();
+}
+
+/** The apron as cloth, on the chip: hem at the bottom, waist at the top. */
+function drawPangdenChip() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.round((pgWeaveEl.clientWidth || 42) * dpr);
+  const h = Math.round((pgWeaveEl.clientHeight || 24) * dpr);
+  if (pgWeaveEl.width !== w || pgWeaveEl.height !== h) {
+    pgWeaveEl.width = w; pgWeaveEl.height = h;
+  }
+  const c = pgWeaveEl.getContext('2d')!;
+  const spec = currentSpec().pangden;
+  // Rows are the chip's pixels, so a band is never thinner than a line.
+  const rows = Math.max(12, Math.round(h / (2 * dpr)));
+  const weave = weavePangden(spec, rows, pangdenDyes);
+  const panelW = w / weave.panels.length;
+  c.clearRect(0, 0, w, h);
+  weave.bands.forEach((bands, k) => {
+    for (const b of bands) {
+      // Hem-first rows, drawn bottom-up.
+      const y0 = h - (b.to / rows) * h;
+      c.fillStyle = b.hex;
+      c.fillRect(Math.round(k * panelW), y0, Math.ceil(panelW) + 1,
+        ((b.to - b.from) / rows) * h + 1);
+    }
+  });
+}
+
+/**
+ * Working the dyes out, with the same visible beat the honju gets.
+ *
+ * Same argument as there, and the same honesty: `tuneDyes` is a hue rotation
+ * and returns instantly. The pause is staged so that ticking the box and
+ * getting an apron back reads as one thing causing the other.
+ */
+let dyeThinking = false;
+let dyeTimer = 0;
+
+/** One chip per dye the current apron actually uses, in the weaver's order. */
+function refreshDyes() {
+  const letters = dyesInProgram(currentSpec().pangden.stripeProgram);
+  // A dye no longer in the cloth cannot still be the one being edited.
+  if (activeDye && !letters.includes(activeDye)) closeDyePicker();
+  dyeHost.innerHTML = '';
+  dyeEls.clear();
+
+  if (dyeThinking) {
+    dyeLabel.innerHTML = '<span class="think"><i class="spin"></i>Working out an apron'
+      + ' for this outfit…</span>';
+    dyeHost.innerHTML = ('<span class="dye ghost"><i></i><span class="dn"></span>'
+      + '<span class="dw"></span><span class="dhex"></span></span>').repeat(letters.length);
+    dyeTune.hidden = true;
+    dyeReset.hidden = true;
+    return;
+  }
+
+  // Once a dye has been moved, the cloth is no longer what that region weaves,
+  // and the panel says so. Sakya re-dyed is a fine apron; calling it Sakya is a
+  // claim about a place.
+  const moved = Object.keys(pangdenDyes).length > 0;
+  dyeLabel.innerHTML = moved
+    ? `Its dyes <span class="hint">— ${pangdenStyle}, re-dyed</span>`
+    : 'Its dyes <span class="hint">— tap one to change it</span>';
+  dyeTune.hidden = false;
+  for (const letter of letters) {
+    const hex = dyeHex(letter);
+    const moved = letter in pangdenDyes;
+    const b = document.createElement('button');
+    b.className = `dye${moved ? ' moved' : ''}${activeDye === letter ? ' on' : ''}`;
+    b.innerHTML = `<i style="background:${hex}"></i>`
+      + `<span class="dn">${nearestNamed(hex)[0]}</span>`
+      + `<span class="dw">${moved ? 'moved' : DYE_NAME[letter] ?? letter}</span>`
+      + `<span class="dhex">${hex.toUpperCase()}</span>`;
+    b.onclick = () => openDyePicker(letter);
+    dyeHost.appendChild(b);
+    dyeEls.set(letter, b);
+  }
+  dyeReset.hidden = Object.keys(pangdenDyes).length === 0;
+  drawPangdenChip();
+}
+
+/**
+ * Tune the apron to what she has on.
+ *
+ * Not a match — see `tuneDyes`. The ground goes opposite the chupa, everything
+ * else turns through the same angle so the weave keeps its character, one
+ * accent echoes the honju, and the undyed bands stay undyed.
+ */
+function applyTune() {
+  dyeThinking = false;
+  clearTimeout(dyeTimer);
+  pangdenDyes = tuneDyes(currentSpec().pangden.stripeProgram, chupaColour, honjuColour);
+  refreshDyes();
+  rebuild();
+  kiss(0.7);
+}
+
+function tuneWithBeat() {
+  clearTimeout(dyeTimer);
+  if (calm.matches) { applyTune(); return; }
+  dyeThinking = true;
+  refreshDyes();
+  dyeTimer = window.setTimeout(applyTune, THINK_MS);
+}
+
+dyeTune.onclick = () => { closeDyePicker(); refreshCards(); tuneWithBeat(); };
+
+function openDyePicker(letter: string) {
+  markPicked();
+  // Tapping the same chip again puts the wheel away, exactly as a garment card
+  // does — the gesture must not mean two different things in two panels.
+  pickerOpen = !(activeDye === letter && pickerOpen);
+  activeDye = pickerOpen ? letter : null;
+  refreshDyes();
+  refreshCards();
+}
+
+function closeDyePicker() {
+  if (!activeDye) return;
+  activeDye = null;
+  pickerOpen = false;
+}
+
+dyeReset.onclick = () => {
+  pangdenDyes = {};
+  closeDyePicker();
+  refreshDyes();
+  refreshCards();
+  rebuild();
+  kiss(0.7);
+};
+
+function showTab(which: 'cloth' | 'pangden') {
+  const pangden = which === 'pangden' && showPangden;
+  paneCloth.hidden = pangden;
+  panePangden.hidden = !pangden;
+  tabCloth.classList.toggle('on', !pangden);
+  tabPangden.classList.toggle('on', pangden);
+  tabCloth.setAttribute('aria-selected', String(!pangden));
+  tabPangden.setAttribute('aria-selected', String(pangden));
+  // The wheel belongs to whatever opened it, and that thing is now off screen.
+  if (!pangden && activeDye) { closeDyePicker(); refreshDyes(); refreshCards(); }
+}
+
+function refreshPangden() {
+  pgOn.checked = showPangden;
+  // Not disabled — absent. She is not wearing one, so there is nothing to
+  // choose, and a greyed-out tab is a promise the page cannot keep.
+  tabPangden.hidden = !showPangden;
+  // The regional note and the dyepot explanation used to print under these two
+  // controls. Both are gone from the page at Thupten's call — the panel reads
+  // as a wardrobe, not a catalogue entry. The sourcing is not lost with them:
+  // every region still carries Buckley's characterisation in `PANGDEN_REGIONS`,
+  // and the tests still hold each program to it.
+  refreshDyes();
+}
+
+tabCloth.onclick = () => showTab('cloth');
+tabPangden.onclick = () => showTab('pangden');
+
+function setPangdenStyle(name: string) {
+  pangdenStyle = name;
+  pgStyleEl.value = name;
+  refreshPangden();
+  rebuild();
+  kiss(0.6);
+}
+
+pgStyleEl.addEventListener('change', () => setPangdenStyle(pgStyleEl.value));
+const stepPangden = (by: number) => {
+  const i = PANGDEN_REGIONS.findIndex((r) => r.name === pangdenStyle);
+  const n = PANGDEN_REGIONS.length;
+  setPangdenStyle(PANGDEN_REGIONS[((i + by) % n + n) % n].name);
+};
+(document.getElementById('pgPrev') as HTMLButtonElement).onclick = () => stepPangden(-1);
+(document.getElementById('pgNext') as HTMLButtonElement).onclick = () => stepPangden(1);
+
+pgOn.addEventListener('change', () => {
+  showPangden = pgOn.checked;
+  refreshPangden();
+  // Ticking it is a choice about the apron, so it opens the apron.
+  showTab(showPangden ? 'pangden' : 'cloth');
+  draw();
+  kiss(0.6);
+  // And it arrives already tuned to what she has on, rather than as a regional
+  // apron that happens to clash with the chupa you just chose. The weave stays
+  // whichever region is selected — only the dyepots move — and one button puts
+  // them back to what that region was actually woven with.
+  if (showPangden) tuneWithBeat(); else { dyeThinking = false; clearTimeout(dyeTimer); }
+});
+
 // --- Colour cards, the wheel, and the harmonies ---------------------------
 type Slot = 'chupa' | 'honju';
 let activeSlot: Slot = 'chupa';
@@ -1174,6 +1503,86 @@ const lightEl = document.getElementById('lightness') as HTMLInputElement;
 const colourOf = (slot: Slot) => (slot === 'chupa' ? chupaColour : honjuColour);
 function setColour(slot: Slot, hex: string) {
   if (slot === 'chupa') chupaColour = hex; else honjuColour = hex;
+}
+
+/**
+ * What the wheel is pointed at.
+ *
+ * Usually one of the two garments. But the pangden panel lets you re-dye the
+ * apron, and a dye is a third kind of target — so the wheel takes an aim rather
+ * than a slot, and everything that reads or writes "the colour being edited"
+ * goes through this pair. `activeDye` set means the wheel has been carried over
+ * to the pangden panel and belongs to a chip there.
+ */
+let activeDye: string | null = null;
+
+const targetHex = (): string =>
+  (activeDye ? dyeHex(activeDye) : colourOf(activeSlot));
+
+function setTarget(hex: string) {
+  if (activeDye) setDye(activeDye, hex); else setColour(activeSlot, hex);
+}
+
+/**
+ * What the wheel is pointing at on screen — a garment card, or a dye chip.
+ *
+ * It is POSITIONED against this, never moved into it. Moving it was the bug:
+ * `activeDye` and `activeSlot` are separate pieces of state, so opening a
+ * garment card while a dye was still active put the wheel under the pangden
+ * chips and edited the apron. The anchor cannot disagree with the target now
+ * because both come from the same two lines below.
+ */
+function pickerAnchor(): HTMLElement {
+  return (activeDye ? dyeEls.get(activeDye) : cardEls[activeSlot]) ?? cardEls[activeSlot];
+}
+
+/**
+ * Put the wheel beside whatever opened it.
+ *
+ * Below the anchor by default, above it when there is no room below, and always
+ * inside the viewport. Fixed positioning, so a panel's `overflow: auto` cannot
+ * clip it and a wrapping grid cannot squeeze it into a 74px column.
+ */
+const PICKER_GAP = 8;
+function positionPicker() {
+  if (!pickerOpen) return;
+  const a = pickerAnchor().getBoundingClientRect();
+  const w = pickerEl.offsetWidth || 208;
+  const h = pickerEl.offsetHeight || 260;
+  const room = window.innerHeight - a.bottom;
+  const top = room >= h + PICKER_GAP || a.top < h + PICKER_GAP
+    ? Math.min(a.bottom + PICKER_GAP, window.innerHeight - h - 8)
+    : a.top - h - PICKER_GAP;
+  const left = Math.min(
+    Math.max(8, a.left + a.width / 2 - w / 2),
+    window.innerWidth - w - 8,
+  );
+  pickerEl.style.left = `${Math.round(left)}px`;
+  pickerEl.style.top = `${Math.round(Math.max(8, top))}px`;
+}
+
+/** A popover follows what it is attached to, or it lies about what it edits. */
+addEventListener('scroll', positionPicker, true);
+addEventListener('resize', positionPicker);
+
+/** Anywhere else, and it goes away. */
+addEventListener('pointerdown', (ev) => {
+  if (!pickerOpen) return;
+  const t = ev.target as Node;
+  if (pickerEl.contains(t)) return;
+  if (cardEls.chupa.contains(t) || cardEls.honju.contains(t) || dyeHost.contains(t)) return;
+  closePicker();
+}, true);
+
+addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && pickerOpen) closePicker();
+});
+
+function closePicker() {
+  pickerOpen = false;
+  activeDye = null;
+  refreshDyes();
+  refreshCards();
 }
 
 /**
@@ -1252,7 +1661,7 @@ function drawWheel(l: number) {
 
   // Where you are: a white ring with a dark keyline, so it holds against both a
   // pale wheel and a deep one.
-  const cur = hexToHsl(colourOf(activeSlot));
+  const cur = hexToHsl(targetHex());
   const a = ((cur.h - 90) * Math.PI) / 180;
   const mx = R + Math.cos(a) * cur.s * rMax;
   const my = R + Math.sin(a) * cur.s * rMax;
@@ -1309,19 +1718,19 @@ function refreshCards() {
   // Only when it is not already there. `after()` is a remove-and-reinsert even
   // when the node is a no-op away from where it already is, and taking the
   // canvas out of the document drops any pointer capture on it.
-  if (pickerEl.previousElementSibling !== cardEls[activeSlot]) {
-    cardEls[activeSlot].after(pickerEl);
-  }
   pickerEl.hidden = !pickerOpen;
-  pickHint.textContent = activeSlot === 'chupa'
-    ? 'turn the wheel to colour the chupa' : 'turn the wheel to colour the honju';
+  positionPicker();
+  pickHint.textContent = activeDye
+    ? `turn the wheel to re-dye the ${nearestNamed(dyeHex(activeDye))[0].toLowerCase()} bands`
+    : (activeSlot === 'chupa'
+      ? 'turn the wheel to colour the chupa' : 'turn the wheel to colour the honju');
   // Not while it is the thing being dragged: the value written back is the
   // round-trip through hex, which lands a hair off where the thumb is and
   // fights it.
   if (document.activeElement !== lightEl) {
-    lightEl.value = String(Math.round(hexToHsl(colourOf(activeSlot)).l * 100));
+    lightEl.value = String(Math.round(hexToHsl(targetHex()).l * 100));
   }
-  drawWheel(hexToHsl(colourOf(activeSlot)).l);
+  drawWheel(hexToHsl(targetHex()).l);
 
   refreshHarmonies();
 }
@@ -1455,10 +1864,17 @@ for (const slot of ['chupa', 'honju'] as Slot[]) {
     // it should start working before the wheel has been touched, so the answer
     // is already there when you look up from it.
     markPicked();
-    pickerOpen = slot === activeSlot ? !pickerOpen : true;
+    // THE BUG THIS FIXES: `activeDye` and `activeSlot` are separate, and this
+    // handler used to set one without clearing the other. Opening the chupa
+    // while a pangden dye was still active left the wheel aimed at the dye, so
+    // it appeared over the apron chips and re-dyed the apron. Whichever of the
+    // two you touch last owns the wheel, and the other must let go.
+    const wasDye = activeDye !== null;
+    activeDye = null;
+    pickerOpen = (slot === activeSlot && !wasDye) ? !pickerOpen : true;
     activeSlot = slot;
+    if (wasDye) refreshDyes();
     refreshCards();
-    if (pickerOpen) pickerEl.scrollIntoView({ block: 'nearest' });
   };
 }
 
@@ -1495,8 +1911,9 @@ function pickFromWheel(clientX: number, clientY: number, clamp: boolean) {
   const h = ((Math.atan2(dy, dx) * 180) / Math.PI + 450) % 360;
   // Same rMax the wheel is painted with — if these two drift apart the marker
   // lands somewhere other than the colour you tapped.
-  setColour(activeSlot, hslToHex({ h, s: Math.min(1, rad / wheelMax()), l: dragL }));
-  clearPalettePicks();
+  setTarget(hslToHex({ h, s: Math.min(1, rad / wheelMax()), l: dragL }));
+  // Re-dyeing the apron does not un-choose the chupa-and-honju pairing.
+  if (!activeDye) clearPalettePicks();
   return true;
 }
 
@@ -1555,9 +1972,9 @@ wheelEl.addEventListener('pointercancel', (ev) => endDrag(ev, false));
 
 lightEl.addEventListener('input', () => {
   markPicked();
-  const c = hexToHsl(colourOf(activeSlot));
-  setColour(activeSlot, hslToHex({ ...c, l: Number(lightEl.value) / 100 }));
-  clearPalettePicks();
+  const c = hexToHsl(targetHex());
+  setTarget(hslToHex({ ...c, l: Number(lightEl.value) / 100 }));
+  if (!activeDye) clearPalettePicks();
   refreshCards();
   draw();
 });
@@ -1586,7 +2003,14 @@ for (const k of KNOBS) {
   knobHost.appendChild(row);
 }
 
+/**
+ * Saving writes `pattern/panels.json` through a Vite middleware that only runs
+ * under `vite dev`. On a static host the POST is a 404, so the button is not
+ * offered there at all — a control that cannot work is worse than a missing
+ * one, and this page is published now.
+ */
 const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
+if (!import.meta.env.DEV) saveBtn.remove();
 saveBtn.onclick = async () => {
   saveBtn.textContent = 'saving…';
   try {
@@ -1623,5 +2047,9 @@ toggle('edgeBtn', () => showEdges, (v) => { showEdges = v; });
 
 refreshCards();
 resize();
+// After resize, so the weave chip has a width to be drawn at. The page opens on
+// the cloth tab: the apron is the second question, not the first.
+refreshPangden();
+showTab('cloth');
 // Laid over the hanger, let go, and left to settle.
 drop();

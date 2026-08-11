@@ -61,6 +61,9 @@ function saveCut(): Plugin {
 }
 
 export default defineConfig({
+  // Relative, so the build works at any path — GitHub Pages serves this from
+  // /chupa/, a custom domain would serve it from /, and neither needs a rebuild.
+  base: './',
   plugins: [saveCut()],
   resolve: {
     alias: {
@@ -73,12 +76,14 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
+        // The dressing room IS the app now, so it sits at the root. The dev
+        // pages stay where they are, behind /dev/.
         index: r('./index.html'),
+        dev: r('./dev/index.html'),
         pangden: r('./dev/pangden/index.html'),
         mannequin: r('./dev/mannequin/index.html'),
         chupa: r('./dev/chupa/index.html'),
         cut: r('./dev/cut/index.html'),
-        flat: r('./dev/flat/index.html'),
       },
     },
   },

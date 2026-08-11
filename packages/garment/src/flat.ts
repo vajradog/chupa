@@ -19,6 +19,7 @@ import type { Fabric } from '@chupa/cloth';
 import { FABRICS } from '@chupa/cloth';
 import type { GarmentSpec } from './spec.js';
 import { GARMENT_SPEC } from './spec.js';
+import { weavePangden } from './pangden.js';
 
 /**
  * Two cloths, and only two. The collar is the honju's own neckline folded out
@@ -26,7 +27,7 @@ import { GARMENT_SPEC } from './spec.js';
  * fold-up, not a cuff. A contrast cuff is a modern idea and this garment does
  * not have one, so there is no third slot for it to live in.
  */
-export type FlatGarment = 'chupa' | 'honju';
+export type FlatGarment = 'chupa' | 'honju' | 'pangden';
 
 export interface FlatRegion {
   readonly name: string;
@@ -35,6 +36,13 @@ export interface FlatRegion {
   readonly outline: readonly (readonly [number, number])[];
   /** Painter's order, low first. */
   readonly layer: number;
+  /**
+   * A colour the region carries itself, rather than taking the one chosen for
+   * its garment. The pangden's bands are dyed cloth in their own right — the
+   * whole apron is not one colour — so they are the one thing on the drawing
+   * that is not tinted by a swatch.
+   */
+  readonly colour?: string;
 }
 
 /** A visible edge that is not a silhouette — the wrap edge, the sash seams. */
@@ -111,12 +119,18 @@ function bodyHalfWidth(form: Form, yCm: number): number {
   return last.rx / form.scale;
 }
 
+export interface FlatOptions {
+  /** Letter to hex, overriding the pangden's default dye for that letter. */
+  readonly pangdenDyes?: Readonly<Record<string, string>>;
+}
+
 export function buildFlatChupa(
   form: Form,
   spec: GarmentSpec = GARMENT_SPEC,
   fabric: Fabric = FABRICS.silk,
+  options: FlatOptions = {},
 ): FlatChupa {
-  const { chupa: c, honju: h } = spec;
+  const { chupa: c, honju: h, pangden: pg } = spec;
   const m = form.measurements;
 
   // --- Landmarks -----------------------------------------------------------
@@ -580,6 +594,63 @@ export function buildFlatChupa(
     if (y >= sashBotY) return sashHalf;
     return skirtHalfAt(y);
   };
+
+  // --- The pangden ---------------------------------------------------------
+  //
+  // Tied at the waist, over the chupa, hanging down the front.
+  //
+  // ITS TOP EDGE COVERS THE LOWER HALF OF THE SASH. (Thupten, 2026-08-11.) It
+  // was drawn tucked entirely beneath the belt, which is wrong twice over: the
+  // apron is tied on over the chupa, and hiding its top edge behind the sash
+  // meant the whole `length` was never the length you saw. Starting at the
+  // middle of the sash and drawing over it fixes both — the drawn drop is now
+  // exactly `pangden.length` from the waist.
+  //
+  // WIDTH IS ARC, NOT SCREEN. The apron is 42 cm of cloth and it is wrapped
+  // round her, so it does not appear 42 cm wide from the front — a strip of
+  // arc length s laid on a cylinder of radius R projects to 2R·sin(s/2R).
+  // Drawn at its flat width it was wider than the skirt it hangs on and stuck
+  // out past the silhouette on both sides. Projected, it covers the front and
+  // stops, which is what the photographs show, and it narrows with the skirt
+  // on its own instead of being tapered by hand.
+  const pgTopY = sashMidY;
+  const pgBotY = sashMidY - pg.length;
+  const pangdenHalfAt = (y: number) => {
+    const r = Math.max(1, garmentHalfAt(y));
+    const halfArc = pg.width / 2;
+    // Past a quarter-turn the cloth has wrapped to the side of her and its
+    // silhouette is simply the body's.
+    return halfArc >= (Math.PI / 2) * r ? r : r * Math.sin(halfArc / r);
+  };
+
+  {
+    const rows = Math.max(8, Math.round(pg.length));
+    const weave = weavePangden(pg, rows, options.pangdenDyes ?? {});
+    const yOf = (row: number) => pgBotY + (row / rows) * (pgTopY - pgBotY);
+    // Edge to edge. There is no gutter between the panels — the strips are sewn
+    // to each other, and a gap here would be an invented feature.
+    const edgeX = (panel: number, y: number) => {
+      const half = pangdenHalfAt(y);
+      return -half + (2 * half * panel) / weave.panels.length;
+    };
+    weave.bands.forEach((bands, k) => {
+      for (const b of bands) {
+        const yLo = yOf(b.from);
+        const yHi = yOf(b.to);
+        regions.push({
+          name: `pangden${k}_${b.from}`,
+          garment: 'pangden',
+          colour: b.hex,
+          // Over the sash (40), because it covers the bottom half of it.
+          layer: 45,
+          outline: [
+            [edgeX(k, yLo), yLo], [edgeX(k + 1, yLo), yLo],
+            [edgeX(k + 1, yHi), yHi], [edgeX(k, yHi), yHi],
+          ],
+        });
+      }
+    });
+  }
 
   // The fold sampled once, then read back by x. It is monotonic in x — it runs
   // from one strap across to the far side — so inverting it is a lookup.

@@ -177,19 +177,30 @@ const inGamut = ([r, g, b]: [number, number, number]): boolean =>
  * whole design rests on quietly stops holding. Chroma is the attribute a
  * garment can most afford to lose, so it is the one bisected away.
  */
+/**
+ * The most chroma sRGB can show at a given lightness and hue.
+ *
+ * Wildly uneven around the wheel — at mid lightness a red holds about twice
+ * what a teal does — which is why "keep the chroma" is not a thing you can ask
+ * for when moving a colour to another hue. What you can ask for is the same
+ * FRACTION of what is available, which is what `tuneDyes` does.
+ */
+export function maxChromaAt(l: number, h: number): number {
+  let lo = 0;
+  let hi = 0.5;                       // beyond any sRGB colour
+  if (inGamut(oklchToLinear(l, hi, h))) return hi;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (inGamut(oklchToLinear(l, mid, h))) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+
 export function oklchToHex({ l, c, h }: Oklch): string {
   const L = Math.max(0, Math.min(1, l));
-  let lo = 0;
-  let hi = Math.max(0, c);
-  if (!inGamut(oklchToLinear(L, hi, h))) {
-    for (let i = 0; i < 20; i++) {
-      const mid = (lo + hi) / 2;
-      if (inGamut(oklchToLinear(L, mid, h))) lo = mid; else hi = mid;
-    }
-  } else {
-    lo = hi;
-  }
-  const rgb = oklchToLinear(L, lo, h);
+  const want = Math.max(0, c);
+  const C = inGamut(oklchToLinear(L, want, h)) ? want : maxChromaAt(L, h);
+  const rgb = oklchToLinear(L, C, h);
   const hx = (v: number) =>
     Math.round(Math.max(0, Math.min(1, linearToSrgb(v))) * 255)
       .toString(16).padStart(2, '0');
@@ -383,21 +394,42 @@ export const NAMED_COLOURS: readonly NamedColour[] = [
   ['Black', '#180614'],
 ];
 
-/** Nearest named colour. Weighted for how the eye actually sees error. */
+/**
+ * Nearest named colour, measured in Oklab.
+ *
+ * It used to be a weighted sum of squared sRGB channel differences, and sRGB
+ * distance is not perceptual distance: a mid green came back as "Ink", losing
+ * to a warm grey by about two percent, and two plainly different pangden dyes
+ * — a teal and a navy — both came back "Indigo", which is not a spec anyone can
+ * dye from. Oklab was built for exactly this comparison and it is already in
+ * the file.
+ *
+ * Chroma is weighted a little above lightness. A name is mostly a claim about
+ * WHICH colour something is rather than how dark it is, and without this a
+ * saturated hue keeps falling into the greys, which is the failure that started
+ * this.
+ */
+/** Oklab a/b for a hex, alongside its L — the plane a hue lives in. */
+function oklabOf(hex: string): [number, number, number] {
+  const { l, c, h } = hexToOklch(hex);
+  const rad = (h * Math.PI) / 180;
+  return [l, Math.cos(rad) * c, Math.sin(rad) * c];
+}
+
+const NAMED_LAB: readonly (readonly [number, number, number])[] =
+  NAMED_COLOURS.map((c) => oklabOf(c[1]));
+
 export function nearestNamed(hex: string): NamedColour {
-  const n = parseInt(hex.slice(1), 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
+  const [l, a, b] = oklabOf(hex);
   let best = NAMED_COLOURS[0];
   let bestD = Infinity;
-  for (const c of NAMED_COLOURS) {
-    const m = parseInt(c[1].slice(1), 16);
-    const dr = r - ((m >> 16) & 255);
-    const dg = g - ((m >> 8) & 255);
-    const db = b - (m & 255);
-    const d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
-    if (d < bestD) { bestD = d; best = c; }
+  for (let i = 0; i < NAMED_COLOURS.length; i++) {
+    const [nl, na, nb] = NAMED_LAB[i];
+    const dl = l - nl;
+    const da = a - na;
+    const db = b - nb;
+    const d = dl * dl + 1.6 * (da * da + db * db);
+    if (d < bestD) { bestD = d; best = NAMED_COLOURS[i]; }
   }
   return best;
 }

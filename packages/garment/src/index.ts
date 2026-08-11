@@ -19,17 +19,25 @@ export { buildChupa, totalParticles, pieceNamed, isFullyPinned } from './chupa.j
 
 export type { Hsl, Oklch, Harmony, NamedColour } from './colour.js';
 export {
-  hexToHsl, hslToHex, hexToOklch, oklchToHex,
+  hexToHsl, hslToHex, hexToOklch, oklchToHex, maxChromaAt,
   harmoniesFor, nearestNamed, NAMED_COLOURS, NEUTRAL_SATURATION,
 } from './colour.js';
 
 export type { HangOptions, HangProfile } from './hang.js';
 export { solveHang } from './hang.js';
 
-export type { FlatChupa, FlatProfile, FlatRegion, FlatSeam, FlatGarment } from './flat.js';
+export type {
+  FlatChupa, FlatProfile, FlatRegion, FlatSeam, FlatGarment, FlatOptions,
+} from './flat.js';
 export { buildFlatChupa } from './flat.js';
 
 export type { SkirtColliderOptions, Collide } from './skirt-collider.js';
 export { createSkirtCollider, composeColliders } from './skirt-collider.js';
 
-export { PANGDEN_PALETTE } from './palette.js';
+export { PANGDEN_PALETTE, pangdenHex } from './palette.js';
+
+export type { PangdenPanel, PangdenBand, PangdenWeave, PangdenRegion } from './pangden.js';
+export {
+  weavePangden, expandStripe, dyesInProgram, tuneDyes, PANGDEN_REGIONS,
+  pangdenRegion, lettersUsed, programIsPaintable,
+} from './pangden.js';
