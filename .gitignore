@@ -3,3 +3,5 @@ dist/
 .vite/
 *.tsbuildinfo
 .DS_Store
+
+# Working notes and agent instructions — local only.
