@@ -303,6 +303,24 @@ function kiss(strength = 1) {
 const calm = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 /**
+ * What counts as a phone. Kept identical to the pair of conditions the
+ * stylesheet uses — the two have to agree, because the layout is CSS and the
+ * behaviour that goes with it is here.
+ *
+ * It was `max-width: 1080px`, which swept up every iPad: an 820pt tablet with a
+ * full desktop's worth of room got a dock and a bottom sheet built for a hand.
+ *
+ * Width alone cannot say it. A phone turned sideways is 932pt across, WIDER
+ * than an iPad standing up at 820, so the two are told apart by the short side
+ * rather than the long one — narrow, or shallow and lying down. Every iPad
+ * clears both: 744pt at its narrowest and 744 tall at its shallowest.
+ */
+const PHONE = '(max-width: 560px),'
+  + ' (max-width: 950px) and (max-height: 560px) and (orientation: landscape)';
+const PHONE_SIDEWAYS =
+  '(max-width: 950px) and (max-height: 560px) and (orientation: landscape)';
+
+/**
  * The drop. Not a push and not a lift — a SWING, released.
  *
  * The first version raised the lower rows straight up and let go. That looked
@@ -754,7 +772,7 @@ const PAPER = '#e2d6c4';
  * scenery — they are what keeps a flat drawing standing on something instead of
  * stuck to the glass.
  */
-const bareRoom = matchMedia('(max-width: 1080px)');
+const bareRoom = matchMedia(PHONE);
 bareRoom.addEventListener('change', () => draw());
 
 /**
@@ -1859,7 +1877,7 @@ function closeDyePicker() {
  * Both live here rather than in two places because the same events drive them:
  * ticking the pangden has to open the pangden, on either layout.
  */
-const sheet = matchMedia('(max-width: 1080px)');
+const sheet = matchMedia(PHONE);
 const cardsPanel = document.querySelector('.panel.cards') as HTMLElement;
 const combosPanel = document.querySelector('.panel.combos') as HTMLElement;
 const mtabs = document.getElementById('mtabs') as HTMLElement;
@@ -1926,9 +1944,7 @@ const mainEl = document.getElementById('main') as HTMLElement;
 const sheetEl = document.getElementById('sheet') as HTMLElement;
 const grabEl = document.getElementById('grab') as HTMLElement;
 /** Sideways, the sheet comes from the right — so the gesture is horizontal. */
-const sideways = matchMedia(
-  '(max-width: 1080px) and (max-height: 560px) and (orientation: landscape)',
-);
+const sideways = matchMedia(PHONE_SIDEWAYS);
 let sheetShown = false;
 
 function openSheet() {
