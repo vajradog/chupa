@@ -1891,10 +1891,24 @@ function showPane(which: Pane) {
   // change.
   cardsPanel.hidden = false;
   combosPanel.hidden = false;
-  menuBtn.setAttribute('aria-expanded', String(which === 'menu' && sheetShown));
   showTab(which);
+  syncDock();
   // The wheel belongs to whatever opened it, and that may have just left.
   if (which !== 'pangden' && activeDye) { closeDyePicker(); refreshDyes(); refreshCards(); }
+}
+
+/**
+ * The dock is the tab bar, so it has to look like one.
+ *
+ * Removing the Colour/Pangden strip only works if the row that replaced it says
+ * which of its tiles you are inside. The two cloth tiles already did — a card
+ * wears `on` for the active slot and writes "editing" on its own cloth — but
+ * the apron tile and the menu button said nothing, so the dock read as three
+ * buttons rather than as the thing that chooses what the sheet is showing.
+ */
+function syncDock() {
+  pgTile.classList.toggle('editing', sheetShown && pane === 'pangden');
+  menuBtn.setAttribute('aria-expanded', String(sheetShown && pane === 'menu'));
 }
 
 /**
@@ -1913,30 +1927,24 @@ menuBtn.addEventListener('click', () => {
   if (pickerOpen) closePicker();
   showPane('menu');
   openSheet();
-  menuBtn.setAttribute('aria-expanded', 'true');
 });
 
 /**
- * Where the combinations and the credit live, which is a layout question.
+ * Where the combinations live, which is a layout question.
  *
- * Both are MOVED rather than duplicated. One credit, in one place in the
- * document, wherever the screen happens to put it — a second copy in the markup
- * is a second copy to keep true, and this one names other people.
+ * Moved rather than duplicated: a second copy in the markup is a second copy to
+ * keep true. On a phone they are the whole of the menu; on a desk they are back
+ * at the top of the cloth column, where a column is not short of space.
  */
 const comboStart = document.getElementById('combostart') as HTMLElement;
 const paneMenu = document.getElementById('paneMenu') as HTMLElement;
-const aboutSlot = document.getElementById('aboutslot') as HTMLElement;
 const clothRule = document.getElementById('clothRule') as HTMLElement;
-const colophon = document.querySelector('.colophon') as HTMLElement;
-const wardrobe = document.querySelector('.wardrobe') as HTMLElement;
 
 function placeChrome() {
   if (sheet.matches) {
     if (comboStart.parentElement !== paneMenu) paneMenu.prepend(comboStart);
-    if (colophon.parentElement !== aboutSlot) aboutSlot.appendChild(colophon);
-  } else {
-    if (comboStart.parentElement !== paneCloth) clothRule.before(comboStart);
-    if (colophon.parentElement !== wardrobe) wardrobe.prepend(colophon);
+  } else if (comboStart.parentElement !== paneCloth) {
+    clothRule.before(comboStart);
   }
 }
 placeChrome();
@@ -1990,6 +1998,7 @@ function openSheet() {
   if (!sheet.matches || sheetShown) return;
   sheetShown = true;
   mainEl.classList.add('open');
+  syncDock();
 }
 
 /**
@@ -2014,7 +2023,7 @@ function closeSheet() {
   if (!sheetShown) return;
   sheetShown = false;
   mainEl.classList.remove('open');
-  menuBtn.setAttribute('aria-expanded', 'false');
+  syncDock();
   // The wheel lives in the sheet, and a wheel that is still "open" while the
   // sheet is away means the next tap on that card shuts it instead of showing
   // it. Putting the sheet away puts away what was in it.
