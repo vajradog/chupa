@@ -13,8 +13,13 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
  * this the image would have to come back out through a screenshot — the same
  * lossy loop `/__cut` exists to end, and the same answer.
  *
- * Regenerate by loading the dressing room and calling `__og()` from the
- * console; there is no button, because this runs about once a redesign.
+ * To regenerate: open the dressing room on the dev server, dress her, and POST
+ * a data URL of a 1200x630 canvas here —
+ *
+ *   fetch('/__og', { method: 'POST', body: canvas.toDataURL('image/jpeg', 0.82) })
+ *
+ * There is no button and no helper on the page, because this runs about once a
+ * redesign and a control for it would be a control in everybody's way.
  */
 function saveOg(): Plugin {
   return {
