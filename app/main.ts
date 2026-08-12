@@ -1317,7 +1317,7 @@ function buildCard(): HTMLCanvasElement {
   const dyes = showPangden ? dyeLetters() : [];
   // Measured rather than guessed, so the credit is never pushed off the bottom
   // by an apron with nine dyepots in it.
-  const capH = 56 + 100 + (dyes.length > 0 ? 174 : 0) + 46 + 62 + 52;
+  const capH = 56 + 100 + (dyes.length > 0 ? 174 : 0) + 46 + 104 + 52;
 
   const card = document.createElement('canvas');
   card.width = CARD_W;
@@ -1384,9 +1384,13 @@ function buildCard(): HTMLCanvasElement {
     y += 58 + 40;
   }
 
-  // Whose it is, and where the research comes from. On the page this is a line
-  // in a footer; on a picture that will be forwarded it is the only thing
-  // travelling with it, so it travels.
+  // What made it, who made that, where to get one, and where the facts came
+  // from — in that order, because a picture that has been forwarded twice has
+  // no other way of telling anybody any of it.
+  //
+  // The wordmark is set in the serif and the person's name is not, the same
+  // separation the page's own footer makes. Run together in one weight it reads
+  // as somebody's job title rather than as an app and its author.
   y += 46;
   g.strokeStyle = '#e6ddcf';
   g.lineWidth = 2;
@@ -1394,13 +1398,26 @@ function buildCard(): HTMLCanvasElement {
   g.moveTo(pad, y);
   g.lineTo(CARD_W - pad, y);
   g.stroke();
-  y += 36;
+
+  y += 40;
+  g.fillStyle = INK;
+  g.font = '600 32px Fraunces, Georgia, serif';
+  const markW = g.measureText('Chupa Designer').width;
+  g.fillText('Chupa Designer', pad, y);
   g.fillStyle = INK_2;
-  g.font = '600 23px "Nunito Sans", sans-serif';
-  g.fillText('Chupa Designer · Thupten Chakrishar / GunkTech', pad, y);
-  y += 28;
+  g.font = '400 22px "Nunito Sans", sans-serif';
+  g.fillText('by Thupten Chakrishar / GunkTech', pad + markW + 16, y);
+
+  // The invitation. It is the reason the picture is worth forwarding at all,
+  // so it is the one line here that is not grey.
+  y += 34;
+  g.fillStyle = '#b3282d';
+  g.font = '600 22px "Nunito Sans", sans-serif';
+  g.fillText('Design your chupa at https://vajradog.github.io/chupa/', pad, y);
+
+  y += 30;
   g.fillStyle = INK_3;
-  g.font = '400 21px "Nunito Sans", sans-serif';
+  g.font = '400 20px "Nunito Sans", sans-serif';
   g.fillText(
     'Colour and pangden research after Khadog, a project of the Terma Heritage Foundation',
     pad, y,

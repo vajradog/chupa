@@ -461,7 +461,15 @@
   /* Quiet, and the last thing in the reading order. Credit that shouts is
      branding; credit that is simply present and correct is attribution. */
   .colophon { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-  .colophon .who { font-size: 12px; color: var(--ink-2); }
+  .colophon .who {
+    display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+    font-size: 12px; color: var(--ink-2);
+  }
+  .wordmark {
+    font-family: "Fraunces", Georgia, serif; font-weight: 600; font-size: 14.5px;
+    letter-spacing: -0.01em; color: var(--ink);
+  }
+  .colophon .invite { font-size: 11.5px; color: var(--ink-2); }
   .colophon .src { font-size: 11px; line-height: 1.35; color: var(--ink-3); max-width: 46ch; }
 
   .grow { flex: 1; }
@@ -750,7 +758,9 @@
       flex: 0 0 auto;
       padding: 7px 14px calc(9px + env(safe-area-inset-bottom));
     }
-    .colophon .who { font-size: 11.5px; }
+    .colophon .who { font-size: 11.5px; gap: 6px; }
+    .wordmark { font-size: 13px; }
+    .colophon .invite { font-size: 11px; }
     .colophon .src { font-size: 11px; }
     #advancedBtn, #advanced { display: none; }
   }
@@ -823,7 +833,7 @@
 <body>
 
 <header>
-  <h1>Chupa <span class="tib">ཕྱུ་པ་</span></h1>
+  <h1>Chupa Designer <span class="tib">ཕྱུ་པ་</span></h1>
   <div class="sub">pick a colour, pick a cloth — she wears it straight away</div>
 </header>
 
@@ -1010,8 +1020,17 @@
          claim a provenance that does not exist. When a real pinned extract
          lands, the version goes in beside the credit and the wording changes
          from "after" to "from". -->
+    <!-- The name of the thing, then the name of the person, and the two set
+         differently so they cannot be read as one. Run together in one weight,
+         "Chupa Designer · Thupten Chakrishar" reads as a job title. The app
+         wears the same serif here as it does at the top of the page — that
+         repetition is what makes it a wordmark rather than two words. -->
     <div class="colophon">
-      <span class="who">Chupa Designer · Thupten Chakrishar / GunkTech</span>
+      <span class="who">
+        <b class="wordmark">Chupa Designer</b>
+        <span class="by">by Thupten Chakrishar / GunkTech</span>
+      </span>
+      <span class="invite">Design your chupa at https://vajradog.github.io/chupa/</span>
       <span class="src">Colour and pangden research after Khadog,
         a project of the Terma Heritage Foundation</span>
     </div>
