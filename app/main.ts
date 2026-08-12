@@ -624,10 +624,6 @@ function resize() {
   W = stageEl.clientWidth; H = stageEl.clientHeight;
   cv.width = W * DPR; cv.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  // The rails beside her are positioned against `#main`, which also contains
-  // the sheet — so "full height" has to be the ROOM's height, not the column's,
-  // or they run on down over the controls. Only the layout knows it.
-  document.documentElement.style.setProperty('--stage-h', `${Math.round(H)}px`);
   pxPerCm = (H * 0.92) / HEIGHT_CM;
   originX = W / 2;
   floorY = H - (H - HEIGHT_CM * pxPerCm) / 2;
@@ -646,6 +642,11 @@ window.addEventListener('resize', resize);
  * alone never hears about.
  */
 new ResizeObserver(() => { if (stageEl.clientWidth > 0) resize(); }).observe(stageEl);
+
+// Touching her puts everything away. The room is the one part of the screen
+// that is not a control, so it is the natural place to mean "I am done with
+// that" — and on a phone it is also the largest target on the page by far.
+stageEl.addEventListener('pointerdown', () => closeSheet());
 
 /** Screen position of a point on the garment, moved by the cloth under it. */
 const gx = (xCm: number, yCm: number) => sx(xCm) + clothOffset(xCm, yCm)[0] * pxPerCm;
@@ -1246,7 +1247,7 @@ const CUSTOM_LABEL = 'Your own mix';
 const comboBands = comboDuo.querySelectorAll('i');
 
 /**
- * The same pairs as the dropdown, as cloth, down the room's other margin.
+ * The same pairs as the dropdown, as cloth, as a ribbon under it in the sheet.
  *
  * Phone only — it is hidden by CSS on a wide screen, where the named list has
  * room to be read. Built once; only the mark on the current one moves.
@@ -1577,12 +1578,114 @@ function showPane(which: Pane) {
 }
 
 for (const b of Array.from(mtabs.querySelectorAll('.mtab'))) {
-  b.addEventListener('click', () => showPane((b as HTMLElement).dataset.pane as Pane));
+  b.addEventListener('click', () => {
+    showPane((b as HTMLElement).dataset.pane as Pane);
+    openSheet();
+  });
 }
 // Turning the phone, or resizing a window past the breakpoint, changes which
 // layout is in force — reapply rather than leaving a panel hidden on a wide
 // screen where nothing can bring it back.
-sheet.addEventListener('change', () => showPane(pane));
+sheet.addEventListener('change', () => {
+  // A sheet is a phone idea. Carried onto a wide screen the class would leave
+  // the room permanently short for a panel that is floating there anyway.
+  if (!sheet.matches) { sheetShown = false; mainEl.classList.remove('open'); }
+  // Coming the other way, a wheel that was open under its card is now parked in
+  // the sheet — so the sheet has to be out, or it is open somewhere nobody can
+  // see and the next tap on that card shuts it.
+  else if (pickerOpen) openSheet();
+  showPane(pane);
+  // The wheel is parked in the sheet on one layout and under its card on the
+  // other, so crossing the line has to re-park it — otherwise it is left in a
+  // panel that layout does not put it in.
+  refreshCards();
+});
+
+/**
+ * The sheet, on a phone: summoned, then dismissed.
+ *
+ * The room is the whole screen and she is drawn as large as it will take, so
+ * every control has to be something that COMES UP over her and goes away again
+ * — a dock along the foot for what she has on, and this for whatever you are
+ * changing. Opening it also lifts the room's floor by its height, which is the
+ * part that matters: the sheet never covers the garment it is editing.
+ *
+ * `#main.open` is the whole of the state. The sheet's transform, the room's
+ * floor and the direction it all travels are CSS, so a phone turned sideways
+ * slides the same panel in from the side with nothing here changing.
+ */
+const mainEl = document.getElementById('main') as HTMLElement;
+const sheetEl = document.getElementById('sheet') as HTMLElement;
+const grabEl = document.getElementById('grab') as HTMLElement;
+/** Sideways, the sheet comes from the right — so the gesture is horizontal. */
+const sideways = matchMedia(
+  '(max-width: 1080px) and (max-height: 560px) and (orientation: landscape)',
+);
+let sheetShown = false;
+
+function openSheet() {
+  if (!sheet.matches || sheetShown) return;
+  sheetShown = true;
+  mainEl.classList.add('open');
+}
+
+function closeSheet() {
+  if (!sheetShown) return;
+  sheetShown = false;
+  mainEl.classList.remove('open');
+  // The wheel lives in the sheet, and a wheel that is still "open" while the
+  // sheet is away means the next tap on that card shuts it instead of showing
+  // it. Putting the sheet away puts away what was in it.
+  if (pickerOpen) closePicker();
+}
+
+/**
+ * Pulling it down.
+ *
+ * A grabber that only accepted a tap would be a button drawn as a handle. It
+ * follows the finger instead, and lets go past a threshold — which is also why
+ * the transition is turned off for the duration: the transform is being set
+ * frame by frame, and easing it would put the sheet behind the finger.
+ */
+let grabFrom = 0;
+let grabBy = 0;
+let grabbing = false;
+
+grabEl.addEventListener('pointerdown', (ev) => {
+  if (!sheet.matches || !sheetShown) return;
+  grabbing = true;
+  grabBy = 0;
+  grabFrom = sideways.matches ? ev.clientX : ev.clientY;
+  grabEl.setPointerCapture(ev.pointerId);
+  sheetEl.style.transition = 'none';
+});
+
+grabEl.addEventListener('pointermove', (ev) => {
+  if (!grabbing) return;
+  const side = sideways.matches;
+  // Only the way it is allowed to go. Dragging it further open would show the
+  // gap it came out of.
+  grabBy = Math.max(0, (side ? ev.clientX : ev.clientY) - grabFrom);
+  sheetEl.style.transform = side ? `translateX(${grabBy}px)` : `translateY(${grabBy}px)`;
+});
+
+/**
+ * Let go, and it either carries on or springs back — in that order, because
+ * dropping the class first means the transform it eases back to is the closed
+ * one. Clearing the inline transform first would snap it home and then animate
+ * from there.
+ */
+function endGrab() {
+  if (!grabbing) return;
+  grabbing = false;
+  if (grabBy > 56) closeSheet();
+  sheetEl.style.transition = '';
+  sheetEl.style.transform = '';
+}
+grabEl.addEventListener('pointerup', endGrab);
+grabEl.addEventListener('pointercancel', endGrab);
+// A tap on it is the same instruction as a short pull.
+grabEl.addEventListener('click', () => { if (grabBy <= 6) closeSheet(); });
 
 function showTab(which: 'cloth' | 'pangden') {
   const pangden = which === 'pangden' && showPangden;
@@ -1636,8 +1739,11 @@ const stepPangden = (by: number) => {
 pgOn.addEventListener('change', () => {
   showPangden = pgOn.checked;
   refreshPangden();
-  // Ticking it is a choice about the apron, so it opens the apron.
+  // Ticking it is a choice about the apron, so it opens the apron — and on a
+  // phone that means bringing the sheet out with the apron in it. Unticking it
+  // is the end of that conversation, so the sheet goes away.
   showPane(showPangden ? 'pangden' : 'cloth');
+  if (showPangden) openSheet(); else closeSheet();
   draw();
   kiss(0.6);
   // And it arrives already tuned to what she has on, rather than as a regional
@@ -1645,6 +1751,27 @@ pgOn.addEventListener('change', () => {
   // whichever region is selected — only the dyepots move — and one button puts
   // them back to what that region was actually woven with.
   if (showPangden) tuneWithBeat(); else { dyeThinking = false; clearTimeout(dyeTimer); }
+});
+
+/**
+ * The apron's tile in the dock, once she is wearing one.
+ *
+ * The dock is the only thing on screen when the sheet is away, so everything in
+ * the sheet has to be reachable from it. The two cloths are: tapping one brings
+ * the wheel up. The apron was not — its tile is a checkbox, so tapping it took
+ * the apron OFF, and the pane of dyes and regions behind it could only be got
+ * back by untying the apron and tying it on again.
+ * So once it is on, the tile is a way in like the other two, and the box in it
+ * is the only thing that still unties it.
+ */
+const pgTile = document.querySelector('.pgcheck') as HTMLElement;
+pgTile.addEventListener('click', (ev) => {
+  if (!sheet.matches || !showPangden) return;
+  if (ev.target === pgOn) return;
+  // The tile is a <label>, so without this the tap would reach the box anyway.
+  ev.preventDefault();
+  showPane('pangden');
+  openSheet();
 });
 
 // --- Colour cards, the wheel, and the harmonies ---------------------------
@@ -1746,7 +1873,9 @@ addEventListener('pointerdown', (ev) => {
 }, true);
 
 addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape' && pickerOpen) closePicker();
+  if (ev.key !== 'Escape') return;
+  if (pickerOpen) closePicker();
+  closeSheet();
 });
 
 function closePicker() {
@@ -2049,8 +2178,14 @@ for (const slot of ['chupa', 'honju'] as Slot[]) {
     activeSlot = slot;
     if (wasDye) refreshDyes();
     // The sheet is where the wheel appears on a phone, so it has to be the
-    // cloth pane rather than whatever was last open.
-    if (sheet.matches && pickerOpen && pane !== 'cloth') showPane('cloth');
+    // cloth pane rather than whatever was last open — and the sheet has to be
+    // out, since tapping a cloth is the whole way in. Tapping it again shuts
+    // the wheel, and an empty sheet standing open over the room is furniture,
+    // so that goes too.
+    if (sheet.matches) {
+      if (pickerOpen) { if (pane !== 'cloth') showPane('cloth'); openSheet(); }
+      else closeSheet();
+    }
     refreshCards();
   };
 }

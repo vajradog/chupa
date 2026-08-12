@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- Zoom is NOT locked. It was, and on a phone that turned "this text is small"
+     into a dead end. Everything tappable is 44px and nothing is under 11px now,
+     so pinch is a courtesy rather than the only way through — but taking it away
+     from someone who needs it was never ours to do. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Chupa</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -28,6 +32,11 @@
     --line-2: #d6c9b5;
     --madder: #b3282d;
     --r: 16px;
+    /* Phone only, but declared here because two files' worth of rules read
+       them: the dock is the strip of what she has on, permanently at the foot
+       of the room, and the sheet is what slides up from behind it. */
+    --dock-h: 84px;
+    --sheet-h: clamp(248px, 44vh, 420px);
     --shadow: 0 1px 2px rgba(74,60,44,0.05), 0 8px 22px -14px rgba(74,60,44,0.35);
     --shadow-lift: 0 2px 4px rgba(74,60,44,0.06), 0 14px 30px -16px rgba(74,60,44,0.45);
   }
@@ -463,147 +472,321 @@
      So nothing scrolls except the sheet. The room takes whatever is left after
      a slim header and a fixed sheet, the two panels become panes of that sheet,
      and a tab bar picks between them. One scrolling region, no duplicated
-     headers, and she is on screen the whole time. */
-  .mtabs, .combrail { display: none; }
+     headers, and she is on screen the whole time.
+
+     The version after that tried to buy the room back by folding the wardrobe
+     and the fifty-one pairs into the empty strips either side of the figure.
+     It bought nothing. Those strips were 124px of a 355px room, so she was no
+     wider than before, and everything pushed into them had to shrink to fit:
+     an 8.5px slot label, 36px pair chips, 24px arrows — under this page's own
+     floor of 11px type and 44px targets, on the one device where a finger is
+     doing the pointing.
+     So the margins are given back to the room — all of them. On a phone this
+     stops being a page with a picture on it and becomes an app for looking at
+     one garment: the room is the whole screen, she is drawn as large as it will
+     take, and every control is something that comes UP over her and goes away
+     again. A dock along the foot holds what she has on; a sheet slides out from
+     behind it with whatever you are changing; the room lifts to make space so
+     she is never behind the thing you are using. Nothing is docked in the
+     middle, nothing is permanently taking a third of the screen, and nothing is
+     smaller than it is on a desk. */
+  .mtabs, .combrail, .grab { display: none; }
+  /* No box at all on a wide screen — the column inside goes on floating over
+     the room, positioned against `#main` exactly as it was. */
+  .sheet { display: contents; }
   @media (max-width: 1080px) {
     body { overflow: hidden; }
-    #main {
-      position: static; flex: 1; min-height: 0;
-      display: flex; flex-direction: column; padding: 0 10px 8px; gap: 8px;
+
+    /* The title is painted ON the room rather than given a band of its own.
+       It is four words; it does not need 46px of the screen. */
+    header {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+      padding: 12px 18px 10px; pointer-events: none;
+      background: linear-gradient(180deg, rgba(249,245,238,0.9) 30%, rgba(249,245,238,0));
     }
-    /* Whatever is left over, and never less than a third of the screen. */
+
+    /* Clipped, because the sheet parks below the floor while it is shut and an
+       unclipped page would simply grow to hold it. */
+    #main { position: relative; flex: 1; min-height: 0; padding: 0; overflow: hidden; }
+
+    /* The room is the app. Edge to edge, the full height of the screen less the
+       dock — and less the sheet as well while the sheet is out, so that opening
+       a control lifts her clear of it instead of covering her with it. The
+       canvas is watched by a ResizeObserver, so she is redrawn to the new room
+       as it moves. */
     #stage {
-      position: relative; inset: auto; flex: 1 1 auto; min-height: 32vh;
-      border-radius: var(--r); overflow: hidden;
+      position: absolute; inset: 0 0 var(--dock-h) 0; border-radius: 0;
+      transition: bottom 340ms cubic-bezier(.22,.61,.36,1);
     }
+    #main.open #stage { bottom: calc(var(--dock-h) + var(--sheet-h)); }
+
+    /* The dock ------------------------------------------------------------- */
+    /* What she has on, at the foot of the room, always there. It is the only
+       permanent furniture on the screen and it is also the way in: tapping a
+       garment brings the wheel up for it. */
+    .panel.cards {
+      position: absolute; left: 0; right: 0; bottom: 0; z-index: 20;
+      top: auto; width: auto; height: var(--dock-h); min-height: 0; flex: none;
+      border: 0; border-top: 1px solid var(--line); border-radius: 0;
+      background: rgba(255,253,249,0.9);
+      -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+      box-shadow: 0 -8px 26px -20px rgba(74,60,44,0.8);
+      overflow: visible;
+    }
+    .cards .scroll {
+      display: flex; flex-direction: row; align-items: stretch;
+      padding: 9px 10px; gap: 8px; overflow: visible;
+    }
+
+    /* The sheet ------------------------------------------------------------ */
+    /* Out from behind the dock and back again. Not a third panel that is always
+       there — a thing you summon, which is why it has a grabber and why the
+       room closes it. */
+    .sheet {
+      display: flex; flex-direction: column;
+      position: absolute; left: 0; right: 0; bottom: var(--dock-h); z-index: 15;
+      height: var(--sheet-h);
+      background: rgba(255,253,249,0.95);
+      -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+      border-top: 1px solid rgba(255,255,255,0.8);
+      border-radius: 22px 22px 0 0;
+      box-shadow: 0 -12px 44px -24px rgba(74,60,44,0.75);
+      transform: translateY(calc(100% + var(--dock-h)));
+      transition: transform 340ms cubic-bezier(.22,.61,.36,1);
+      will-change: transform;
+    }
+    #main.open .sheet { transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .sheet, #stage { transition: none; }
+    }
+
+    /* The bar you pull it down by. A full-width target, because the gesture it
+       stands for is a swipe and a swipe does not aim. */
+    .grab {
+      display: block; flex: 0 0 auto; position: relative;
+      width: 100%; height: 34px; padding: 0; border: 0; background: none;
+      cursor: pointer; touch-action: none;
+    }
+    .grab::before {
+      content: ""; position: absolute; left: 50%; top: 13px;
+      width: 42px; height: 4px; margin-left: -21px;
+      border-radius: 2px; background: var(--line-2);
+      transition: background 140ms;
+    }
+    .grab:hover::before { background: var(--ink-3); }
+
     .mtabs {
-      display: flex; gap: 4px; flex: 0 0 auto;
-      background: var(--card); border: 1px solid var(--line);
+      display: flex; gap: 4px; flex: 0 0 auto; margin: 0 13px;
+      background: var(--paper); border: 1px solid var(--line);
       border-radius: 999px; padding: 3px;
     }
     .mtab {
       flex: 1; border: 0; border-radius: 999px; background: none;
-      padding: 8px 4px; cursor: pointer; color: var(--ink-2);
-      font-family: "Fraunces", Georgia, serif; font-size: 13.5px; font-weight: 500;
+      min-height: 44px; padding: 8px 4px; cursor: pointer; color: var(--ink-2);
+      font-family: "Fraunces", Georgia, serif; font-size: 15px; font-weight: 500;
     }
     .mtab.on { background: var(--madder); color: #fffdf9; }
     .mtab[hidden] { display: none; }
     /* One tab is not a choice, so the bar goes and the sheet gets the room. */
     .mtabs.lone { display: none; }
 
-    /* The sheet: a fixed slice of the screen that scrolls inside itself. */
-    .panel {
+    /* Inside the sheet the column is no longer a card of its own — the sheet is
+       the card. */
+    .panel.combos {
       position: static; top: auto; bottom: auto; left: auto; right: auto;
-      width: auto; flex: 0 0 auto; height: 34vh; min-height: 210px;
+      width: auto; flex: 1 1 auto; min-height: 0; height: auto;
+      background: none; border: 0; border-radius: 0; box-shadow: none;
+      backdrop-filter: none; -webkit-backdrop-filter: none;
     }
     .panel[hidden] { display: none; }
-    .panel .scroll { padding: 13px; gap: 12px; }
-
-    /* The wardrobe goes ON the room ---------------------------------------- */
-    /* The figure is narrow and centred, so a phone was showing two tall strips
-       of empty backdrop either side of her while the same phone had the cards
-       queued below in a sheet. Those strips are now the wardrobe: what she has
-       on sits beside her, the sheet is free for whatever you are changing, and
-       the room gets the height back. */
-    #main { position: relative; }
-    .panel.cards {
-      position: absolute; left: 20px; top: 18px; z-index: 12;
-      width: 84px; height: auto; min-height: 0;
-      max-height: calc(var(--stage-h, 40vh) - 36px); overflow: hidden;
-      background: none; border: 0; box-shadow: none; backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-    }
-    .cards .scroll { display: flex; padding: 0; gap: 7px; overflow: visible; }
+    .panel .scroll { padding: 13px; gap: 13px; }
     .cards .eyebrow { display: none; }
-    /* Small enough to sit in the margin, still tappable at 44px+. */
-    .cards .card { border-radius: 11px; box-shadow: var(--shadow); }
-    .cards .swatch { height: 46px; }
-    .cards .card .meta { padding: 4px 7px 6px; gap: 0; }
+    .cards .card {
+      position: relative; flex: 1 1 0; min-width: 0;
+      border-radius: 12px; box-shadow: var(--shadow);
+    }
+    .card + .card { margin-top: 0; }
     /* Both words go ON the cloth. A tile of colour with its name written in it
        is one object; a swatch with a white caption stuck under it is two, and
-       in an 84px margin the caption was most of the height. */
-    .cards .card { position: relative; }
-    .cards .swatch { height: 64px; }
+       the caption was most of the height. */
+    .cards .swatch { height: 66px; }
     .cards .card .meta {
       position: absolute; left: 0; right: 0; bottom: 0;
-      display: block; padding: 0 8px 7px; background: none;
+      display: block; padding: 0 10px 8px; background: none;
     }
     /* Stays absolute: it lives in the swatch, not in `.meta`, so going static
        gave it the swatch's zero padding and pinned it to the corner. Inset to
        match the name below it, or the two do not line up. */
-    .cards .slotname { left: 9px; top: 7px; font-size: 8.5px; letter-spacing: 0.1em; }
+    .cards .slotname { left: 11px; top: 9px; font-size: 11px; letter-spacing: 0.1em; }
     .cards .cname {
-      display: block; font-size: 12.5px; line-height: 1.15;
+      display: block; font-size: 15px; line-height: 1.15;
       color: var(--on-cloth, var(--ink));
     }
     .cards .ctone, .cards .hex, .cards .chev { display: none; }
+    /* The apron's switch is the third thing on the rail, and it is a tile like
+       the other two rather than a checkbox floating over the backdrop. */
     .pgcheck {
-      background: rgba(255,253,249,0.92); border: 1px solid var(--line);
-      border-radius: 11px; padding: 7px 8px; gap: 7px;
-      box-shadow: var(--shadow); flex-wrap: wrap;
+      flex: 0 0 auto; width: 86px; flex-direction: column; justify-content: center;
+      gap: 6px; margin-top: 0; padding: 8px 6px;
+      background: var(--card); border: 1.5px solid var(--line);
+      border-radius: 12px; box-shadow: var(--shadow);
     }
-    .pgcheck .pgname { font-size: 12px; }
+    /* Two things in one tile, so they need separate targets. Tapping the tile
+       brings the apron's pane up; tapping the box is the only thing that takes
+       the apron off — which means the box needs a target of its own, 22px of
+       drawn checkbox sitting in the middle of 44px of it. */
+    .pgcheck input { width: 22px; height: 22px; position: relative; }
+    .pgcheck input::before { content: ""; position: absolute; inset: -11px; }
+    .pgcheck .pgname { font-size: 12.5px; }
     .pgcheck .hint { display: none; }
     /* On the stage the wheel would cover her, so it opens in the sheet. */
     .cards .pickerslot { display: none; }
 
-    /* The pairs, down the other margin --------------------------------------- */
-    /* Cloth, not names. At this width a label would be unreadable and the strip
-       would stop being a margin and start being a panel — so it is a ribbon of
-       two-tone swatches you try, and the sheet keeps the named list for when
-       you want to know what you are looking at. */
+    /* The pairs, as a ribbon in the sheet ------------------------------------ */
+    /* Cloth, not names: flicking through fifty-one pairs on the garment itself
+       beats reading fifty-one labels, and that is worth keeping. What it is not
+       worth is standing them in a 40px gutter at 36px square. Laid across the
+       sheet, under the named control they duplicate, each one is a real target
+       and the room above stays clear. */
     .combrail {
-      display: flex; flex-direction: column; gap: 6px;
-      position: absolute; right: 20px; top: 18px; z-index: 12;
-      width: 40px; max-height: calc(var(--stage-h, 40vh) - 36px);
-      overflow-y: auto; overscroll-behavior: contain;
-      scrollbar-width: none; padding: 2px;
+      display: flex; flex-direction: row; gap: 8px;
+      overflow-x: auto; overscroll-behavior-x: contain;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none; padding: 2px; margin: -6px -2px 0;
     }
     .combrail::-webkit-scrollbar { display: none; }
     .cpair {
-      flex: 0 0 auto; display: block; width: 36px; height: 36px; padding: 0;
+      flex: 0 0 auto; display: block; width: 44px; height: 44px; padding: 0;
       position: relative; overflow: hidden; cursor: pointer;
-      border: 1.5px solid rgba(255,253,249,0.8); border-radius: 9px;
+      scroll-snap-align: start;
+      border: 1.5px solid rgba(255,253,249,0.8); border-radius: 10px;
       box-shadow: var(--shadow); background: none;
     }
     .cpair i { position: absolute; inset: 0; display: block; }
-    .cpair i.b { inset: auto 0 0 0; height: 12px; }
+    .cpair i.b { inset: auto 0 0 0; height: 14px; }
     .cpair.on { border-color: var(--madder); box-shadow: var(--shadow-lift); }
+
+    /* Every control at a finger's size -------------------------------------- */
+    /* Nothing below is a new idea — it is the same controls the desk gets, at
+       the size a thumb needs. They were shrunk to fit a layout that no longer
+       exists. */
+    .comborow { grid-template-columns: 44px 1fr 44px; gap: 8px; }
+    .step { height: 44px; font-size: 19px; }
+    .combowrap { height: 44px; grid-template-columns: 30px 1fr; padding: 0 10px 0 6px; }
+    .duo.sm { height: 28px; }
+    .combowrap.pgwrap { grid-template-columns: 48px 1fr; }
+    .pgweave { width: 48px; height: 28px; }
+    /* 15px is also the size below which a phone offers to zoom the page for
+       you when the control takes focus. `stretch` because the wrap centres its
+       items, which left the control itself 20px tall inside a 44px row — the
+       part of the row you were most likely to hit was not the control. */
+    #combo, #pgStyle { font-size: 15px; align-self: stretch; }
+    .combonote { font-size: 12.5px; }
+    .harm { grid-template-columns: 42px 1fr; gap: 0 11px; padding: 7px 8px; }
+    .harm .hc { height: 42px; }
+    .harm .hn { font-size: 15px; }
+    .harm .hnote { font-size: 12.5px; }
+    .dyes { grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 8px; }
+    .dye { padding: 7px; }
+    .dye i { height: 32px; }
+    .dye .dn { font-size: 12.5px; }
+    .dye .dhex { font-size: 11px; }
+    /* The wheel is in the sheet on a phone, which is the widest thing it has
+       ever had to sit in — so it stops being a thumbnail. And it loses its own
+       frame: on a desk the picker is a panel that drops out of a card and needs
+       an edge, but here the sheet IS the panel, and a bordered box inside it is
+       a box drawn around a box. */
+    #wheel { width: 210px; height: 210px; }
+    .picker { background: none; border: 0; padding: 2px 0 8px; gap: 12px; }
+    .pickhint { font-size: 13px; }
+    .lightrow { gap: 11px; padding: 0 4px; }
+    /* A 6px track is a 6px target. The padding makes the control 44px tall
+       while `content-box` keeps the track itself the thin line it should be —
+       so the slider looks the same and can actually be grabbed. */
+    /* 44 with 19 of padding either side, since everything here is border-box —
+       the track that remains is the same 6px line it was. */
+    input[type=range] {
+      height: 44px; padding: 19px 0; background-clip: content-box;
+    }
+    input[type=range]::-webkit-slider-thumb { width: 28px; height: 28px; }
+    .empty { font-size: 13px; }
+
     /* Its own tab strip is redundant now that the bar above does the choosing. */
     .combos > .tabs { display: none; }
-    .cards .scroll { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
-    /* One line of credit, not a block of it. */
-    footer { padding: 6px 14px 8px; }
-    .colophon .who { font-size: 10.5px; }
-    .colophon .src { font-size: 9.5px; }
+    /* The credit stays a line at the foot of the screen rather than becoming a
+       thing you have to go and find. Small — but not below the floor, and both
+       lines, because which half of it gets dropped is not a layout decision. */
+    footer {
+      flex: 0 0 auto;
+      padding: 7px 14px calc(9px + env(safe-area-inset-bottom));
+    }
+    .colophon .who { font-size: 11.5px; }
+    .colophon .src { font-size: 11px; }
     #advancedBtn, #advanced { display: none; }
-    /* Stacked, the cards sit two abreast — so the wheel has to break the row
-       rather than land in the column beside the card that opened it. `.pgcard`
-       and `.harmony` no longer live here, but the rule costs nothing and stops
-       them landing wrong if they ever come back. */
-    .cards .eyebrow, .cards .pickerslot, .cards .harmony,
-    .cards .pgcheck, .cards .pgcard { grid-column: 1 / -1; }
-    .card + .card { margin-top: 0; }
-    /* Stacked, the combination comes straight under the room — it is where you
-       start, not something below a wardrobe you have not filled in yet. The
-       stage and the combination keep the default order, so pushing the cards
-       past both is the whole change. */
-    .cards { order: 1; }
-    footer { position: sticky; bottom: 0; }
   }
   @media (max-width: 560px) {
-    header { flex-direction: column; gap: 2px; padding: 14px 20px 10px; }
-    #stage { height: 46vh; }
-    .cards .scroll { grid-template-columns: 1fr; }
-    header { flex-direction: column; gap: 0; padding: 10px 16px 6px; }
-    h1 { font-size: 21px; }
-    h1 .tib { font-size: 16px; }
+    header { flex-direction: column; gap: 0; }
+    h1 { font-size: 22px; }
+    h1 .tib { font-size: 17px; }
     header .sub { display: none; }
     .wardrobe { gap: 8px; }
     .grow { display: none; }
-    .cname { font-size: 17px; }
-    .swatch { height: 62px; }
+  }
+  /* A short screen — a small phone. The sheet gives up height before the dock
+     does, because a sheet that scrolls loses nothing by being shorter and a
+     dock that shrinks stops being tappable. */
+  @media (max-width: 1080px) and (max-height: 700px) {
+    :root { --sheet-h: clamp(220px, 46vh, 340px); --dock-h: 78px; }
+    .cards .swatch { height: 60px; }
+    #wheel { width: 168px; height: 168px; }
+  }
+
+  /* A phone turned sideways ------------------------------------------------ */
+  /* A sheet that comes up from the floor needs floor to come up from, and a
+     sideways phone has 360px of height for a room, a dock and a sheet. So the
+     sheet comes in from the SIDE instead — same panel, same grabber, same
+     summon-and-dismiss, turned through ninety degrees — and the room narrows
+     rather than shortens to make way for it. The dock stays at the foot, where
+     a thumb already is. */
+  @media (max-width: 1080px) and (max-height: 560px) and (orientation: landscape) {
+    :root { --dock-h: 70px; --sheet-w: min(330px, 46vw); }
+    /* The strapline runs straight into the sheet's edge at this width, and it
+       is a line about what the page is — which you can see. */
+    header { padding: 8px 16px 6px; }
+    header .sub { display: none; }
+    h1 { font-size: 19px; }
+    h1 .tib { font-size: 15px; }
+    #stage {
+      inset: 0 0 var(--dock-h) 0;
+      transition: right 340ms cubic-bezier(.22,.61,.36,1);
+    }
+    #main.open #stage { bottom: var(--dock-h); right: var(--sheet-w); }
+    .panel.cards { right: 0; }
+    #main.open .panel.cards { right: var(--sheet-w); }
+    .panel.cards { transition: right 340ms cubic-bezier(.22,.61,.36,1); }
+    .sheet {
+      top: 0; bottom: 0; left: auto; right: 0;
+      width: var(--sheet-w); height: auto;
+      border-radius: 22px 0 0 22px;
+      padding-left: 22px;                 /* the grabber's column */
+      transform: translateX(100%);
+      box-shadow: -12px 0 44px -24px rgba(74,60,44,0.75);
+    }
+    /* Down the leading edge, because that is the edge it came from. */
+    .grab {
+      position: absolute; left: 0; top: 0; width: 22px; height: 100%;
+    }
+    .grab::before {
+      left: 11px; top: 50%; margin: -21px 0 0 -2px;
+      width: 4px; height: 42px;
+    }
+    .cards .swatch { height: 52px; }
+    .cards .cname { font-size: 13.5px; }
+    .cards .slotname { font-size: 10px; top: 6px; }
+    .pgcheck { width: 72px; }
     #wheel { width: 150px; height: 150px; }
+    .panel .scroll { padding: 11px 12px; gap: 11px; }
+    footer { padding: 5px 14px calc(6px + env(safe-area-inset-bottom)); }
   }
 </style>
 </head>
@@ -616,17 +799,6 @@
 
 <div id="main">
   <div id="stage"><canvas id="c"></canvas></div>
-
-  <!-- The other margin. Ready-made pairs, as cloth rather than as names, so
-       they can be tried against her without leaving the room. Phone only. -->
-  <div class="combrail" id="combrail" aria-label="ready-made combinations"></div>
-
-  <!-- Small screens only. On a phone the two floating panels become one sheet
-       under the figure, and this is what chooses what is in it. -->
-  <div class="mtabs" id="mtabs" role="tablist">
-    <button class="mtab on" data-pane="cloth" role="tab">Colour</button>
-    <button class="mtab" data-pane="pangden" id="mtabPangden" role="tab">Pangden</button>
-  </div>
 
   <div class="panel cards">
     <div class="scroll">
@@ -692,6 +864,24 @@
     </div>
   </div>
 
+  <!-- On a phone this wrapper IS the sheet: a panel that slides up from behind
+       the dock, carrying the tab bar and whichever pane is open. On a wide
+       screen it is `display: contents` — it generates no box at all, so the
+       column inside it goes on floating over the room exactly as before and
+       the desktop layout does not know it exists. -->
+  <div class="sheet" id="sheet">
+
+    <!-- The way down. A phone expects a sheet to have one, and this page had
+         the room behind it as the only way out. -->
+    <button class="grab" id="grab" aria-label="put this away"></button>
+
+    <!-- Small screens only. On a phone the two floating panels become one sheet
+         under the figure, and this is what chooses what is in it. -->
+    <div class="mtabs" id="mtabs" role="tablist">
+      <button class="mtab on" data-pane="cloth" role="tab">Colour</button>
+      <button class="mtab" data-pane="pangden" id="mtabPangden" role="tab">Pangden</button>
+    </div>
+
   <!-- The right column is what is OFFERED to you; the left is what she has on.
        The suggestions live here rather than under the cards because the wheel
        opens under the card it belongs to and pushes everything below it off the
@@ -719,6 +909,13 @@
       </div>
       <div class="combonote" id="comboNote"></div>
 
+      <!-- The same pairs as the dropdown above, as cloth rather than as names,
+           so one can be tried against her without reading anything. Phone only
+           — on a desk the named list has room to be read and this would be a
+           second copy of it. The room stays in view above the sheet, so trying
+           one still shows it on her. -->
+      <div class="combrail" id="combrail" aria-label="ready-made combinations"></div>
+
       <div class="rule"></div>
 
       <div class="eyebrow" id="harmonyLabel"></div>
@@ -742,6 +939,8 @@
       <div class="dyes" id="dyes"></div>
     </div>
   </div>
+
+  </div><!-- .sheet -->
 
 </div><!-- #main -->
 
