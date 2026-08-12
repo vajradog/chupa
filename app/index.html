@@ -35,8 +35,10 @@
     /* Phone only, but declared here because two files' worth of rules read
        them: the dock is the strip of what she has on, permanently at the foot
        of the room, and the sheet is what slides up from behind it. */
-    --dock-h: 84px;
-    --sheet-h: clamp(248px, 44vh, 420px);
+    --dock-h: 76px;
+    /* A starting value only. The script measures the sheet and overwrites this
+       with its real height, so the room gives up exactly what the sheet uses. */
+    --sheet-h: 320px;
     --shadow: 0 1px 2px rgba(74,60,44,0.05), 0 8px 22px -14px rgba(74,60,44,0.35);
     --shadow-lift: 0 2px 4px rgba(74,60,44,0.06), 0 14px 30px -16px rgba(74,60,44,0.45);
   }
@@ -95,6 +97,10 @@
   .shot.done .cam { display: none; }
   .shot.done .tick { display: block; }
   .shot[disabled] { opacity: 0.55; cursor: default; transform: none; }
+
+  /* The menu is phone-only furniture: on a wide screen the combinations have a
+     column and the credit has a footer, so there is nothing behind it. */
+  .menubtn { display: none; }
 
   /* Floating panels ------------------------------------------------------- */
   .panel {
@@ -571,7 +577,28 @@
       position: absolute; inset: 0 0 var(--dock-h) 0; border-radius: 0;
       transition: bottom 340ms cubic-bezier(.22,.61,.36,1);
     }
+    /* `--sheet-h` is MEASURED, not declared — the script watches the sheet and
+       writes its real height here. A fixed share of the screen meant the room
+       gave up the same 44vh whether the sheet held a wheel or three lines of
+       credit, and she went small for no reason. Now the sheet is as tall as
+       whatever is in it and never a pixel taller, and every pixel it does not
+       need is hers. */
     #main.open #stage { bottom: calc(var(--dock-h) + var(--sheet-h)); }
+
+    /* Beside the camera. Same size, same treatment — two things you can do to
+       the room rather than to the garment. */
+    .menubtn {
+      display: grid; place-items: center;
+      position: absolute; top: 12px; right: 64px; z-index: 14;
+      width: 44px; height: 44px; padding: 0; border-radius: 50%;
+      background: rgba(255,253,249,0.9); color: var(--ink-2);
+      border: 1px solid var(--line);
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+      box-shadow: var(--shadow); cursor: pointer;
+      transition: color 130ms, border-color 130ms;
+    }
+    .menubtn svg { width: 21px; height: 21px; display: block; }
+    .menubtn[aria-expanded="true"] { color: var(--card); background: var(--madder); border-color: var(--madder); }
 
     /* The dock ------------------------------------------------------------- */
     /* What she has on, at the foot of the room, always there. It is the only
@@ -598,7 +625,10 @@
     .sheet {
       display: flex; flex-direction: column;
       position: absolute; left: 0; right: 0; bottom: var(--dock-h); z-index: 15;
-      height: var(--sheet-h);
+      /* Its own content decides, up to a ceiling — past two thirds of the
+         screen it has stopped being a sheet over a room and become a room with
+         a sheet over it, and the pane inside scrolls from there. */
+      height: auto; max-height: 66vh;
       background: rgba(255,253,249,0.95);
       -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
       border-top: 1px solid rgba(255,255,255,0.8);
@@ -628,31 +658,20 @@
     }
     .grab:hover::before { background: var(--ink-3); }
 
-    .mtabs {
-      display: flex; gap: 4px; flex: 0 0 auto; margin: 0 13px;
-      background: var(--paper); border: 1px solid var(--line);
-      border-radius: 999px; padding: 3px;
-    }
-    .mtab {
-      flex: 1; border: 0; border-radius: 999px; background: none;
-      min-height: 44px; padding: 8px 4px; cursor: pointer; color: var(--ink-2);
-      font-family: "Fraunces", Georgia, serif; font-size: 15px; font-weight: 500;
-    }
-    .mtab.on { background: var(--madder); color: #fffdf9; }
-    .mtab[hidden] { display: none; }
-    /* One tab is not a choice, so the bar goes and the sheet gets the room. */
-    .mtabs.lone { display: none; }
-
     /* Inside the sheet the column is no longer a card of its own — the sheet is
-       the card. */
+       the card. `flex: 0 1 auto` rather than `1 1`: it takes what it needs and
+       gives the rest back, which is the whole point of a measured sheet. */
     .panel.combos {
       position: static; top: auto; bottom: auto; left: auto; right: auto;
-      width: auto; flex: 1 1 auto; min-height: 0; height: auto;
+      width: auto; flex: 0 1 auto; min-height: 0; height: auto;
       background: none; border: 0; border-radius: 0; box-shadow: none;
       backdrop-filter: none; -webkit-backdrop-filter: none;
     }
     .panel[hidden] { display: none; }
-    .panel .scroll { padding: 13px; gap: 13px; }
+    .panel .scroll { padding: 2px 13px 12px; gap: 9px; }
+    /* Every heading in the sheet is one line of type standing between the room
+       and a control. They earn their place, but not at display size. */
+    .eyebrow { font-size: 13px; }
     .cards .eyebrow { display: none; }
     .cards .card {
       position: relative; flex: 1 1 0; min-width: 0;
@@ -735,23 +754,60 @@
        part of the row you were most likely to hit was not the control. */
     #combo, #pgStyle { font-size: 15px; align-self: stretch; }
     .combonote { font-size: 12.5px; }
-    .harm { grid-template-columns: 42px 1fr; gap: 0 11px; padding: 7px 8px; }
-    .harm .hc { height: 42px; }
-    .harm .hn { font-size: 15px; }
-    .harm .hnote { font-size: 12.5px; }
-    .dyes { grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 8px; }
-    .dye { padding: 7px; }
-    .dye i { height: 32px; }
-    .dye .dn { font-size: 12.5px; }
-    .dye .dhex { font-size: 11px; }
+    /* The suggestions go sideways. Eight of them as a list is 300px of sheet —
+       more than the wheel — for something you glance at and tap. As a ribbon of
+       cloth they cost one row, they stay visible while you turn the wheel above
+       them, and the reading of each is on the chip you are about to press
+       rather than beside it. */
+    .harmony {
+      flex-direction: row; gap: 8px; align-items: flex-start;
+      overflow-x: auto; overscroll-behavior-x: contain;
+      scrollbar-width: none; padding: 2px; margin: 0 -2px;
+    }
+    .harmony::-webkit-scrollbar { display: none; }
+    /* The cell is as wide as its own name, not a fixed column — "Triad" and
+       "Complement" are not the same length, and a fixed 48px turned half of
+       them into "Comple…", "Monochr…", "Analogo…". A truncated label is worse
+       than no label: it costs the same room and says less. The cloth stays a
+       48px square whatever the name does. */
+    .harm {
+      flex: 0 0 auto; display: block; padding: 0;
+      width: auto; min-width: 48px; max-width: 92px;
+      border: 0; background: none; border-radius: 11px;
+    }
+    .harm:hover { background: none; border-color: transparent; }
+    .harm .hc {
+      display: block; width: 48px; height: 48px; margin: 0 auto;
+      border-radius: 11px; box-shadow: var(--shadow);
+    }
+    /* The name under the chip; the sentence explaining it does not fit a
+       52px column and is not what you are choosing by. */
+    .harm .hn {
+      display: block; font-size: 10px; font-weight: 600; line-height: 1.15;
+      margin-top: 3px; color: var(--ink-2); text-align: center;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .harm .hnote { display: none; }
+    .harm.ghost .hn { width: 100%; }
+    /* Nine dyepots is three rows however they are arranged, so the saving is in
+       the row rather than the count. Still a 44px-plus target, and every chip
+       still carries its code — that is the part a weaver orders from. */
+    .dyes { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 7px; }
+    .dye { padding: 6px; gap: 3px; }
+    .dye i { height: 28px; }
+    .dye .dn { font-size: 12px; }
+    .dye .dhex { font-size: 10.5px; }
     /* The wheel is in the sheet on a phone, which is the widest thing it has
        ever had to sit in — so it stops being a thumbnail. And it loses its own
        frame: on a desk the picker is a panel that drops out of a card and needs
        an edge, but here the sheet IS the panel, and a bordered box inside it is
        a box drawn around a box. */
-    #wheel { width: 210px; height: 210px; }
-    .picker { background: none; border: 0; padding: 2px 0 8px; gap: 12px; }
-    .pickhint { font-size: 13px; }
+    #wheel { width: 160px; height: 160px; }
+    .picker { background: none; border: 0; padding: 0; gap: 6px; }
+    /* The dock tile already says which cloth is being coloured — it wears the
+       word "editing" while the wheel is out — so a line of sheet repeating it
+       was 19px spent saying it twice. */
+    .pickhint { display: none; }
     .lightrow { gap: 11px; padding: 0 4px; }
     /* A 6px track is a 6px target. The padding makes the control 44px tall
        while `content-box` keeps the track itself the thin line it should be —
@@ -764,19 +820,21 @@
     input[type=range]::-webkit-slider-thumb { width: 28px; height: 28px; }
     .empty { font-size: 13px; }
 
-    /* Its own tab strip is redundant now that the bar above does the choosing. */
+    /* The dock chooses the pane now, so the strip inside goes. */
     .combos > .tabs { display: none; }
-    /* The credit stays a line at the foot of the screen rather than becoming a
-       thing you have to go and find. Small — but not below the floor, and both
-       lines, because which half of it gets dropped is not a layout decision. */
-    footer {
-      flex: 0 0 auto;
-      padding: 7px 14px calc(9px + env(safe-area-inset-bottom));
-    }
-    .colophon .who { font-size: 11.5px; gap: 6px; }
-    .wordmark { font-size: 13px; }
-    .colophon .invite { font-size: 11px; }
-    .colophon .src { font-size: 11px; }
+
+    /* The footer leaves the screen ------------------------------------------ */
+    /* Three lines of credit, permanently, was 83px — a tenth of a phone — held
+       by text nobody reads twice. The colophon is MOVED into the menu (not
+       copied: it is the same element), so nothing is lost and the tenth goes
+       back to her. It also still prints on every picture the camera saves,
+       which is the copy that actually travels. */
+    footer { display: none; }
+    #aboutslot .colophon { gap: 3px; }
+    .colophon .who { font-size: 13px; gap: 7px; }
+    .wordmark { font-size: 15px; }
+    .colophon .invite { font-size: 12px; }
+    .colophon .src { font-size: 11.5px; max-width: none; }
     #advancedBtn, #advanced { display: none; }
   }
   /* Phones again — the same pair of conditions as above. */
@@ -795,9 +853,9 @@
      tappable. Lying-down phones are all shorter than this and are handled by
      the block below, which is why this one does not need the orientation. */
   @media (max-width: 560px) and (max-height: 700px) {
-    :root { --sheet-h: clamp(220px, 46vh, 340px); --dock-h: 78px; }
-    .cards .swatch { height: 60px; }
-    #wheel { width: 168px; height: 168px; }
+    :root { --dock-h: 72px; }
+    .cards .swatch { height: 54px; }
+    #wheel { width: 148px; height: 148px; }
   }
 
   /* A phone turned sideways ------------------------------------------------ */
@@ -822,10 +880,19 @@
     #main.open #stage { bottom: var(--dock-h); right: var(--sheet-w); }
     .panel.cards { right: 0; }
     #main.open .panel.cards { right: var(--sheet-w); }
-    .panel.cards { transition: right 340ms cubic-bezier(.22,.61,.36,1); }
+    /* The camera and the menu belong to the room, so they travel with its edge.
+       Pinned to the screen they ended up sitting ON the sheet the moment it
+       came in — two buttons about the room, floating over the panel instead. */
+    .panel.cards, .shot, .menubtn {
+      transition: right 340ms cubic-bezier(.22,.61,.36,1);
+    }
+    #main.open .shot { right: calc(var(--sheet-w) + 12px); }
+    #main.open .menubtn { right: calc(var(--sheet-w) + 64px); }
     .sheet {
       top: 0; bottom: 0; left: auto; right: 0;
-      width: var(--sheet-w); height: auto;
+      /* Full height here: sideways the sheet is a column, and the ceiling that
+         keeps it from swallowing an upright screen would crop it. */
+      width: var(--sheet-w); height: auto; max-height: none;
       border-radius: 22px 0 0 22px;
       padding-left: 22px;                 /* the grabber's column */
       transform: translateX(100%);
@@ -872,6 +939,17 @@
     <svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor"
          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m5 12.5 4.5 4.5L19 7.5"/>
+    </svg>
+  </button>
+
+  <!-- Everything that is not a garment. Phone only: on a wide screen the
+       combinations have a column to live in and the credit has a footer, so
+       there is nothing for it to hold. -->
+  <button class="menubtn" id="menubtn" aria-label="combinations and about"
+          aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+         stroke-linecap="round" aria-hidden="true">
+      <path d="M4 7h16M4 12h16M4 17h16"/>
     </svg>
   </button>
 
@@ -950,12 +1028,11 @@
          the room behind it as the only way out. -->
     <button class="grab" id="grab" aria-label="put this away"></button>
 
-    <!-- Small screens only. On a phone the two floating panels become one sheet
-         under the figure, and this is what chooses what is in it. -->
-    <div class="mtabs" id="mtabs" role="tablist">
-      <button class="mtab on" data-pane="cloth" role="tab">Colour</button>
-      <button class="mtab" data-pane="pangden" id="mtabPangden" role="tab">Pangden</button>
-    </div>
+    <!-- There was a Colour/Pangden tab strip here. It was a fourth row of
+         switching stacked at the bottom of the screen, and it chose between
+         exactly the things the dock tiles already choose between — tap a cloth
+         and you meant the cloth, tap the apron and you meant the apron. The
+         dock is the tab bar. -->
 
   <!-- The right column is what is OFFERED to you; the left is what she has on.
        The suggestions live here rather than under the cards because the wheel
@@ -973,28 +1050,44 @@
     </div>
 
     <div class="scroll" id="paneCloth" role="tabpanel">
-      <div class="eyebrow">Start from a combination</div>
-      <div class="comborow">
-        <button class="step" id="comboPrev" aria-label="previous combination">‹</button>
-        <label class="combowrap">
-          <span class="duo sm" id="comboDuo"><i></i><i class="b"></i></span>
-          <select id="combo" aria-label="ready-made combinations"></select>
-        </label>
-        <button class="step" id="comboNext" aria-label="next combination">›</button>
+      <!-- Wrapped, because on a phone the whole block moves out of here and
+           into the menu. Fifty-one ready-made pairs are an on-ramp: you take
+           one at the start and then you are mixing your own. That is not worth
+           permanent room on a screen this size, and it was the bulk of what
+           made the bottom of the page crowded. On a desk it stays exactly where
+           it was — a column is not short of space. -->
+      <div id="combostart">
+        <div class="eyebrow">Start from a combination</div>
+        <div class="comborow">
+          <button class="step" id="comboPrev" aria-label="previous combination">‹</button>
+          <label class="combowrap">
+            <span class="duo sm" id="comboDuo"><i></i><i class="b"></i></span>
+            <select id="combo" aria-label="ready-made combinations"></select>
+          </label>
+          <button class="step" id="comboNext" aria-label="next combination">›</button>
+        </div>
+        <div class="combonote" id="comboNote"></div>
+
+        <!-- The same pairs as the dropdown above, as cloth rather than as
+             names, so one can be tried against her without reading anything.
+             Phone only — on a desk the named list has room to be read and this
+             would be a second copy of it. -->
+        <div class="combrail" id="combrail" aria-label="ready-made combinations"></div>
       </div>
-      <div class="combonote" id="comboNote"></div>
 
-      <!-- The same pairs as the dropdown above, as cloth rather than as names,
-           so one can be tried against her without reading anything. Phone only
-           — on a desk the named list has room to be read and this would be a
-           second copy of it. The room stays in view above the sheet, so trying
-           one still shows it on her. -->
-      <div class="combrail" id="combrail" aria-label="ready-made combinations"></div>
-
-      <div class="rule"></div>
+      <div class="rule" id="clothRule"></div>
 
       <div class="eyebrow" id="harmonyLabel"></div>
       <div class="harmony" id="harmony"></div>
+    </div>
+
+    <!-- Phone only, and empty until the layout fills it: the combinations move
+         in here from the cloth pane, and the credit moves in from the footer.
+         Both are moved rather than copied — one credit, in one place in the
+         document, wherever the screen happens to put it. -->
+    <div class="scroll" id="paneMenu" role="tabpanel" hidden>
+      <div class="rule"></div>
+      <div id="aboutslot"></div>
     </div>
 
     <div class="scroll" id="panePangden" role="tabpanel" hidden>

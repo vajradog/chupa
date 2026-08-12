@@ -1880,9 +1880,7 @@ function closeDyePicker() {
 const sheet = matchMedia(PHONE);
 const cardsPanel = document.querySelector('.panel.cards') as HTMLElement;
 const combosPanel = document.querySelector('.panel.combos') as HTMLElement;
-const mtabs = document.getElementById('mtabs') as HTMLElement;
-const mtabPangden = document.getElementById('mtabPangden') as HTMLButtonElement;
-type Pane = 'cloth' | 'pangden';
+type Pane = 'cloth' | 'pangden' | 'menu';
 let pane: Pane = 'cloth';
 
 function showPane(which: Pane) {
@@ -1893,33 +1891,74 @@ function showPane(which: Pane) {
   // change.
   cardsPanel.hidden = false;
   combosPanel.hidden = false;
-  for (const b of Array.from(mtabs.querySelectorAll('.mtab'))) {
-    const on = (b as HTMLElement).dataset.pane === which;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-selected', String(on));
-  }
+  menuBtn.setAttribute('aria-expanded', String(which === 'menu' && sheetShown));
   showTab(which);
   // The wheel belongs to whatever opened it, and that may have just left.
   if (which !== 'pangden' && activeDye) { closeDyePicker(); refreshDyes(); refreshCards(); }
 }
 
-for (const b of Array.from(mtabs.querySelectorAll('.mtab'))) {
-  b.addEventListener('click', () => {
-    showPane((b as HTMLElement).dataset.pane as Pane);
-    openSheet();
-  });
+/**
+ * The menu: everything that is not a garment.
+ *
+ * Two things live behind it, and both were taking permanent room at the bottom
+ * of the screen for something you touch once. Fifty-one ready-made pairs are an
+ * on-ramp — you take one at the start and then you are mixing your own — and
+ * the credit is a credit.
+ *
+ * It toggles. A menu that only opens is a menu you get out of by guessing.
+ */
+const menuBtn = document.getElementById('menubtn') as HTMLButtonElement;
+menuBtn.addEventListener('click', () => {
+  if (sheetShown && pane === 'menu') { closeSheet(); return; }
+  if (pickerOpen) closePicker();
+  showPane('menu');
+  openSheet();
+  menuBtn.setAttribute('aria-expanded', 'true');
+});
+
+/**
+ * Where the combinations and the credit live, which is a layout question.
+ *
+ * Both are MOVED rather than duplicated. One credit, in one place in the
+ * document, wherever the screen happens to put it — a second copy in the markup
+ * is a second copy to keep true, and this one names other people.
+ */
+const comboStart = document.getElementById('combostart') as HTMLElement;
+const paneMenu = document.getElementById('paneMenu') as HTMLElement;
+const aboutSlot = document.getElementById('aboutslot') as HTMLElement;
+const clothRule = document.getElementById('clothRule') as HTMLElement;
+const colophon = document.querySelector('.colophon') as HTMLElement;
+const wardrobe = document.querySelector('.wardrobe') as HTMLElement;
+
+function placeChrome() {
+  if (sheet.matches) {
+    if (comboStart.parentElement !== paneMenu) paneMenu.prepend(comboStart);
+    if (colophon.parentElement !== aboutSlot) aboutSlot.appendChild(colophon);
+  } else {
+    if (comboStart.parentElement !== paneCloth) clothRule.before(comboStart);
+    if (colophon.parentElement !== wardrobe) wardrobe.prepend(colophon);
+  }
 }
+placeChrome();
+
 // Turning the phone, or resizing a window past the breakpoint, changes which
 // layout is in force — reapply rather than leaving a panel hidden on a wide
 // screen where nothing can bring it back.
 sheet.addEventListener('change', () => {
+  placeChrome();
   // A sheet is a phone idea. Carried onto a wide screen the class would leave
   // the room permanently short for a panel that is floating there anyway.
-  if (!sheet.matches) { sheetShown = false; mainEl.classList.remove('open'); }
-  // Coming the other way, a wheel that was open under its card is now parked in
-  // the sheet — so the sheet has to be out, or it is open somewhere nobody can
-  // see and the next tap on that card shuts it.
-  else if (pickerOpen) openSheet();
+  if (!sheet.matches) {
+    sheetShown = false;
+    mainEl.classList.remove('open');
+    // `menu` is a phone pane and there is nowhere for it to be shown.
+    if (pane === 'menu') pane = 'cloth';
+  } else if (pickerOpen) {
+    // Coming the other way, a wheel that was open under its card is now parked
+    // in the sheet — so the sheet has to be out, or it is open somewhere nobody
+    // can see and the next tap on that card shuts it.
+    openSheet();
+  }
   showPane(pane);
   // The wheel is parked in the sheet on one layout and under its card on the
   // other, so crossing the line has to re-park it — otherwise it is left in a
@@ -1953,10 +1992,29 @@ function openSheet() {
   mainEl.classList.add('open');
 }
 
+/**
+ * How much room the sheet is actually using.
+ *
+ * The room's floor is lifted by `--sheet-h`, and that used to be a fixed share
+ * of the screen — 44vh, whether the sheet held a colour wheel or three lines of
+ * credit. So she went small by the same amount every time, for the tallest
+ * thing the sheet could ever hold rather than the thing in it.
+ *
+ * Measured instead, and measured by an observer rather than at the moments we
+ * think it changes: the wheel arriving, a pane swapping, nine dyepots becoming
+ * three, a phone turning. All of those change the sheet's height, and none of
+ * them has to know about this.
+ */
+new ResizeObserver(() => {
+  const h = Math.round(sheetEl.getBoundingClientRect().height);
+  if (h > 0) mainEl.style.setProperty('--sheet-h', `${h}px`);
+}).observe(sheetEl);
+
 function closeSheet() {
   if (!sheetShown) return;
   sheetShown = false;
   mainEl.classList.remove('open');
+  menuBtn.setAttribute('aria-expanded', 'false');
   // The wheel lives in the sheet, and a wheel that is still "open" while the
   // sheet is away means the next tap on that card shuts it instead of showing
   // it. Putting the sheet away puts away what was in it.
@@ -2011,10 +2069,14 @@ grabEl.addEventListener('pointercancel', endGrab);
 // A tap on it is the same instruction as a short pull.
 grabEl.addEventListener('click', () => { if (grabBy <= 6) closeSheet(); });
 
-function showTab(which: 'cloth' | 'pangden') {
+function showTab(which: Pane) {
   const pangden = which === 'pangden' && showPangden;
-  paneCloth.hidden = pangden;
+  // `menu` exists only on a phone; on a wide screen its contents are back in
+  // the cloth pane and the footer, so it can never be the one showing.
+  const menu = which === 'menu' && sheet.matches;
+  paneCloth.hidden = pangden || menu;
   panePangden.hidden = !pangden;
+  paneMenu.hidden = !menu;
   tabCloth.classList.toggle('on', !pangden);
   tabPangden.classList.toggle('on', pangden);
   tabCloth.setAttribute('aria-selected', String(!pangden));
@@ -2027,9 +2089,6 @@ function refreshPangden() {
   // Not disabled — absent. She is not wearing one, so there is nothing to
   // choose, and a greyed-out tab is a promise the page cannot keep.
   tabPangden.hidden = !showPangden;
-  mtabPangden.hidden = !showPangden;
-  // A bar with one tab in it is a label pretending to be a choice.
-  mtabs.classList.toggle('lone', !showPangden);
   // The regional note and the dyepot explanation used to print under these two
   // controls. Both are gone from the page at Thupten's call — the panel reads
   // as a wardrobe, not a catalogue entry. The sourcing is not lost with them:
