@@ -740,7 +740,62 @@ function clothFill(region: FlatRegion, base: string): CanvasGradient {
  */
 const PAPER = '#e2d6c4';
 
+/**
+ * On a phone there is no studio.
+ *
+ * The backdrop is a photograph of a place to photograph things in, and it was
+ * worth its space when it sat in a window in the middle of a page. Once the
+ * room became the whole screen it stopped being a setting and started being the
+ * subject: a roll of paper, its edges, its sweep and its corners, at full
+ * bleed, with the garment in front of it. So the phone gets the garment and the
+ * page's own paper behind it, and nothing else.
+ *
+ * What stays is the shadow she casts and the one under her hem. Those are not
+ * scenery — they are what keeps a flat drawing standing on something instead of
+ * stuck to the glass.
+ */
+const bareRoom = matchMedia('(max-width: 1080px)');
+bareRoom.addEventListener('change', () => draw());
+
+/**
+ * Held up while the picture is being rendered.
+ *
+ * The picture is bare whichever screen made it. Partly so one is the same
+ * object as another, and partly because a studio drawn to fill the frame ends
+ * at the frame: its floor sweep would run off the bottom edge and butt straight
+ * into the panel of colour names underneath, which is a join no photograph has.
+ */
+let forceBare = false;
+const noStudio = () => forceBare || bareRoom.matches;
+
+/** Under the hem, so she is standing rather than floating. */
+function contactShadow(strength = 1) {
+  const hemPx = sy(GARMENT_SPEC.chupa.hemFromFloor);
+  const rx = 42 * pxPerCm;
+  const sh = ctx.createRadialGradient(originX + 8, hemPx, 2, originX + 8, hemPx, rx);
+  sh.addColorStop(0, `rgba(80,62,40,${0.34 * strength})`);
+  sh.addColorStop(0.5, `rgba(80,62,40,${0.13 * strength})`);
+  sh.addColorStop(1, 'rgba(80,62,40,0)');
+  ctx.save();
+  ctx.translate(originX + 8, hemPx);
+  ctx.scale(1, 0.16);
+  ctx.translate(-(originX + 8), -hemPx);
+  ctx.fillStyle = sh;
+  ctx.beginPath();
+  ctx.arc(originX + 8, hemPx, rx, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawStudio() {
+  if (noStudio()) {
+    // Nothing painted at all — the canvas is left transparent and the page's
+    // own paper shows through it, which is the background this wants and one
+    // the browser is already drawing.
+    contactShadow(0.5);
+    return;
+  }
+
   // The room.
   ctx.fillStyle = '#efe7db';
   ctx.fillRect(0, 0, W, H);
@@ -794,22 +849,7 @@ function drawStudio() {
   ctx.fillStyle = curve;
   ctx.fillRect(0, sweepY - H * 0.13, W, H * 0.23);
 
-  // Contact shadow under the hem.
-  const hemPx = sy(GARMENT_SPEC.chupa.hemFromFloor);
-  const rx = 42 * pxPerCm;
-  const sh = ctx.createRadialGradient(originX + 8, hemPx, 2, originX + 8, hemPx, rx);
-  sh.addColorStop(0, 'rgba(80,62,40,0.34)');
-  sh.addColorStop(0.5, 'rgba(80,62,40,0.13)');
-  sh.addColorStop(1, 'rgba(80,62,40,0)');
-  ctx.save();
-  ctx.translate(originX + 8, hemPx);
-  ctx.scale(1, 0.16);
-  ctx.translate(-(originX + 8), -hemPx);
-  ctx.fillStyle = sh;
-  ctx.beginPath();
-  ctx.arc(originX + 8, hemPx, rx, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  contactShadow();
 
   ctx.restore();
 }
@@ -1185,8 +1225,222 @@ function draw() {
     ctx.setLineDash([]);
   }
 
-  drawVignette();
+  // The vignette is the room's corners going dark, and with no room it would be
+  // four dark corners painted onto the page for no reason.
+  if (!noStudio()) drawVignette();
 }
+
+// ---------------------------------------------------------------------------
+// The picture
+//
+// The spec card the footer plates were a rehearsal for. A chupa is chosen here
+// and made somewhere else, so the one thing that has to leave this page is an
+// image that survives being forwarded: her at the top, and under her the names
+// and the codes of every cloth she has on. A screenshot loses the codes — they
+// are 11px on a phone and they are the only part a tailor can actually weave
+// from.
+//
+// It borrows the live canvas rather than keeping a second one. Everything that
+// draws reads `W`, `H`, `pxPerCm`, `originX` and `floorY`, so pointing those at
+// a 1080px frame, drawing once, and handing the room back is the whole trick —
+// and it means the picture can never drift from what is on screen, because it
+// is the same code that made what is on screen. Synchronous throughout, so
+// nothing paints while the canvas is the wrong size.
+// ---------------------------------------------------------------------------
+
+const CARD_W = 1080;
+const CARD_GARMENT_H = 1240;
+
+const INK = '#2f2a25';
+const INK_2 = '#6f665c';
+const INK_3 = '#a2988c';
+
+function roundRect(
+  g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number,
+) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+/** A tile of cloth, with the hairline that keeps a pale one off a pale page. */
+function cardSwatch(
+  g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, hex: string,
+) {
+  roundRect(g, x, y, w, h, Math.min(14, h / 3));
+  g.fillStyle = hex;
+  g.fill();
+  g.strokeStyle = 'rgba(74,60,44,0.16)';
+  g.lineWidth = 2;
+  g.stroke();
+}
+
+/** Render the garment into `card` at the top, at the card's own resolution. */
+function paintGarment(card: HTMLCanvasElement) {
+  const keep = {
+    cw: cv.width, ch: cv.height, W, H, DPR, pxPerCm, originX, floorY,
+  };
+  // DPR 1: the frame is being specified in real pixels, not in CSS ones.
+  DPR = 1;
+  W = CARD_W;
+  H = CARD_GARMENT_H;
+  cv.width = W;
+  cv.height = H;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // Tighter than the room, and anchored to the floor rather than centred. The
+  // room has to hold a whole stature because a head might be drawn in it; the
+  // picture never has one, so centring spent the top eighth of the frame on
+  // empty paper above her shoulders. Over 1 and the crop takes that back.
+  pxPerCm = (H * 1.05) / HEIGHT_CM;
+  originX = W / 2;
+  floorY = H * 0.955;
+  forceBare = true;
+  draw();
+  forceBare = false;
+  card.getContext('2d')!.drawImage(cv, 0, 0);
+
+  // Everything the frame touched, put back exactly as it was found.
+  cv.width = keep.cw;
+  cv.height = keep.ch;
+  W = keep.W; H = keep.H; DPR = keep.DPR;
+  pxPerCm = keep.pxPerCm; originX = keep.originX; floorY = keep.floorY;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  draw();
+}
+
+function buildCard(): HTMLCanvasElement {
+  const pad = 64;
+  const dyes = showPangden ? dyeLetters() : [];
+  // Measured rather than guessed, so the credit is never pushed off the bottom
+  // by an apron with nine dyepots in it.
+  const capH = 56 + 100 + (dyes.length > 0 ? 174 : 0) + 46 + 62 + 52;
+
+  const card = document.createElement('canvas');
+  card.width = CARD_W;
+  card.height = CARD_GARMENT_H + capH;
+  const g = card.getContext('2d')!;
+
+  // The page's own paper, so the picture and the page it came from match.
+  const bg = g.createLinearGradient(0, 0, 0, card.height);
+  bg.addColorStop(0, '#f9f5ee');
+  bg.addColorStop(0.34, '#f6f1e8');
+  bg.addColorStop(1, '#f1e9dc');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, card.width, card.height);
+
+  paintGarment(card);
+
+  let y = CARD_GARMENT_H + 56;
+  g.textBaseline = 'alphabetic';
+
+  // The two cloths, side by side, each as tile + name + code.
+  const col = (CARD_W - pad * 2) / 2;
+  ([['Chupa', chupaColour], ['Honju', honjuColour]] as [string, string][])
+    .forEach(([label, hex], i) => {
+      const x = pad + i * col;
+      cardSwatch(g, x, y, 100, 100, hex);
+      g.fillStyle = INK_2;
+      g.font = '600 23px "Nunito Sans", sans-serif';
+      g.fillText(label.toUpperCase(), x + 124, y + 30);
+      g.fillStyle = INK;
+      g.font = '600 40px Fraunces, Georgia, serif';
+      g.fillText(nearestNamed(hex)[0], x + 124, y + 74);
+      g.fillStyle = INK_3;
+      g.font = '400 24px "Nunito Sans", sans-serif';
+      g.fillText(hex.toUpperCase(), x + 124, y + 104);
+    });
+  y += 100;
+
+  // The apron, if she has one on: which one, and every dyepot in it. One chip
+  // per dye rather than per band, the same as the panel — the bands repeat, the
+  // dyes are the actual list of things somebody has to source.
+  if (dyes.length > 0) {
+    y += 50;
+    g.fillStyle = INK_2;
+    g.font = '600 23px "Nunito Sans", sans-serif';
+    g.fillText('PANGDEN', pad, y);
+    g.fillStyle = INK;
+    g.font = '600 34px Fraunces, Georgia, serif';
+    g.fillText(pangdenStyle, pad + 140, y + 2);
+    y += 26;
+    // Each pot carries its code, the same as its chip in the panel does. An
+    // apron is a set of specific colours somebody has to dye or buy, and a
+    // square of colour with no number under it is not something you can weave
+    // from. Never wider than the card, however many pots the program calls for.
+    const cell = Math.min(104, (CARD_W - pad * 2) / dyes.length);
+    const chip = cell - 12;
+    dyes.forEach((letter, i) => {
+      const x = pad + i * cell;
+      const hex = dyeHex(letter);
+      cardSwatch(g, x, y, chip, 58, hex);
+      g.fillStyle = INK_3;
+      g.font = '400 17px "Nunito Sans", sans-serif';
+      g.fillText(hex.toUpperCase(), x, y + 80);
+    });
+    y += 58 + 40;
+  }
+
+  // Whose it is, and where the research comes from. On the page this is a line
+  // in a footer; on a picture that will be forwarded it is the only thing
+  // travelling with it, so it travels.
+  y += 46;
+  g.strokeStyle = '#e6ddcf';
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(pad, y);
+  g.lineTo(CARD_W - pad, y);
+  g.stroke();
+  y += 36;
+  g.fillStyle = INK_2;
+  g.font = '600 23px "Nunito Sans", sans-serif';
+  g.fillText('Chupa Designer · Thupten Chakrishar / GunkTech', pad, y);
+  y += 28;
+  g.fillStyle = INK_3;
+  g.font = '400 21px "Nunito Sans", sans-serif';
+  g.fillText(
+    'Colour and pangden research after Khadog, a project of the Terma Heritage Foundation',
+    pad, y,
+  );
+
+  return card;
+}
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+const shotBtn = document.getElementById('shot') as HTMLButtonElement;
+let shotTimer = 0;
+
+shotBtn.addEventListener('click', async () => {
+  if (shotBtn.disabled) return;
+  shotBtn.disabled = true;
+  try {
+    // Canvas text falls back to a system serif if Fraunces has not arrived, and
+    // the picture is the one thing here that cannot be redrawn later.
+    if (document.fonts?.ready) await document.fonts.ready;
+    const card = buildCard();
+    const blob = await new Promise<Blob | null>((r) => card.toBlob(r, 'image/png'));
+    if (!blob) return;
+    const name = `chupa-${slug(nearestNamed(chupaColour)[0])}`
+      + `-${slug(nearestNamed(honjuColour)[0])}.png`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    // A download is silent, and a button that does nothing visible reads as
+    // broken however well it worked.
+    shotBtn.classList.add('done');
+    clearTimeout(shotTimer);
+    shotTimer = window.setTimeout(() => shotBtn.classList.remove('done'), 1600);
+  } finally {
+    shotBtn.disabled = false;
+  }
+});
 
 // ---------------------------------------------------------------------------
 // UI
