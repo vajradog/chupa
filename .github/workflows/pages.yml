@@ -1,0 +1,64 @@
+# Build the dressing room and publish it.
+#
+# Until now this was a person running `vite build` and copying `dist` onto the
+# gh-pages branch by hand. That works right up until somebody pushes to main and
+# assumes the site followed — the branch and the site drift apart silently, and
+# nothing in the Actions tab says so, because the only run there was GitHub's own
+# publisher reacting to a branch nobody had touched.
+#
+# So main is the source of truth and this is what makes it true. It also runs the
+# tests first: 174 of them hold the pattern, the weave and the colour engine to
+# what they claim, and a build that publishes past a failing one is worse than no
+# build at all.
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+  # So a deploy can be re-run without an empty commit to hang it on.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and the newest wins — two pushes in a minute should not
+# race to decide what is live.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `ci` rather than `install`: the lockfile is the point of a build machine.
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
