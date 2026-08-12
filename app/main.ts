@@ -2318,12 +2318,32 @@ function paintWheelBase(l: number) {
   const img = bctx.createImageData(px, px);
   const chroma = 1 - Math.abs(2 * l - 1);
   const feather = 1.5 * wheelDpr;
+  // This loop runs px² times — 102k at a 160pt wheel on a 2x screen — and it
+  // reruns on every change of lightness, so it is dragged through rather than
+  // paid once. Two things it must not do per pixel:
+  //
+  //   `Math.hypot` (several times the cost of the sqrt it wraps here, because
+  //   it is specified to avoid overflow for arbitrary argument counts), and
+  //   four separate byte writes into `img.data`, each bounds-checked.
+  //
+  // The row also stops at the circle rather than walking the corners: a disc
+  // covers π/4 of its box, so a fifth of the work was spent on pixels whose
+  // only job was to be transparent.
+  const buf = new Uint32Array(img.data.buffer);
   for (let y = 0; y < px; y++) {
-    for (let x = 0; x < px; x++) {
-      const dx = x - R + 0.5, dy = y - R + 0.5;
-      const r = Math.hypot(dx, dy);
+    const dy = y - R + 0.5;
+    // Half-width of the disc on this row; outside it every pixel is clear, and
+    // createImageData already gave us zeroes.
+    const span = R * R - dy * dy;
+    if (span <= 0) continue;
+    const half = Math.sqrt(span);
+    const x0 = Math.max(0, Math.floor(R - 0.5 - half));
+    const x1 = Math.min(px - 1, Math.ceil(R - 0.5 + half));
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - R + 0.5;
+      const r = Math.sqrt(dx * dx + dy * dy);
       const i = (y * px + x) * 4;
-      if (r > R) { img.data[i + 3] = 0; continue; }
+      if (r > R) continue;
       const h = ((Math.atan2(dy, dx) * 180) / Math.PI + 450) % 360;
       // HSL to RGB inline: a hex string per pixel is ~124k allocations at 2x.
       const c = chroma * Math.min(1, r / rMax);
@@ -2333,11 +2353,20 @@ function paintWheelBase(l: number) {
       const [rr, gg, bb] =
         t < 1 ? [c, xx, 0] : t < 2 ? [xx, c, 0] : t < 3 ? [0, c, xx]
         : t < 4 ? [0, xx, c] : t < 5 ? [xx, 0, c] : [c, 0, xx];
-      img.data[i] = (rr + m) * 255;
-      img.data[i + 1] = (gg + m) * 255;
-      img.data[i + 2] = (bb + m) * 255;
       // Feather the rim so it does not alias into a cog.
-      img.data[i + 3] = r > R - feather ? Math.round(255 * (R - r) / feather) : 255;
+      const a = r > R - feather ? Math.round(255 * (R - r) / feather) : 255;
+      // `+ 0.5 | 0` rounds. A Uint8ClampedArray store rounds on its own, and a
+      // bitwise OR truncates — without this the whole disc would sit up to one
+      // level darker per channel than it used to.
+      //
+      // One 32-bit store instead of four bounds-checked byte stores. Written
+      // little-endian (so ABGR in memory order), which is every platform this
+      // will run on. All three channels are in [0,1] here — `m` is never
+      // negative and `rr + m` never exceeds 1 — so nothing needs clamping.
+      const rB = ((rr + m) * 255 + 0.5) | 0;
+      const gB = ((gg + m) * 255 + 0.5) | 0;
+      const bB = ((bb + m) * 255 + 0.5) | 0;
+      buf[i >> 2] = (a << 24) | (bB << 16) | (gB << 8) | rB;
     }
   }
   bctx.putImageData(img, 0, 0);
@@ -2674,11 +2703,46 @@ function endDrag(ev: PointerEvent, landed: boolean) {
 wheelEl.addEventListener('pointerup', (ev) => endDrag(ev, true));
 wheelEl.addEventListener('pointercancel', (ev) => endDrag(ev, false));
 
+/**
+ * The lightness slider, coalesced to the frame — the same treatment the wheel
+ * drag gets, and for the same reason.
+ *
+ * A range input emits `input` faster than the display refreshes, and this one
+ * was running the FULL refresh on every one of them: the picker moved in the
+ * DOM, the eight suggestions were recomputed and their chips rebuilt from
+ * scratch, and the apron was retuned to the outfit. That is the exact pass the
+ * note above `flushDrag` says cannot happen while a finger is down. It cost
+ * ~60ms a sample where the disc itself costs three, so dragging lightness was
+ * the slowest thing on the page by an order of magnitude — and the suggestion
+ * chips restarted their entrance animation on every sample, so it flickered
+ * while it stuttered.
+ *
+ * Per frame now: the colour, the swatches, the disc, the garment. The passes
+ * that rebuild things wait until you let go, which is when their answers are
+ * worth having.
+ */
+let lightRaf = 0;
+
+function flushLight() {
+  lightRaf = 0;
+  const l = Number(lightEl.value) / 100;
+  const c = hexToHsl(targetHex());
+  setTarget(hslToHex({ ...c, l }));
+  if (!activeDye) clearPalettePicks();
+  paintCards();
+  drawWheel(l);
+  draw();
+}
+
 lightEl.addEventListener('input', () => {
   markPicked();
-  const c = hexToHsl(targetHex());
-  setTarget(hslToHex({ ...c, l: Number(lightEl.value) / 100 }));
-  if (!activeDye) clearPalettePicks();
+  if (!lightRaf) lightRaf = requestAnimationFrame(flushLight);
+});
+
+// Let go, and everything that was too expensive to run per sample catches up.
+lightEl.addEventListener('change', () => {
+  if (lightRaf) cancelAnimationFrame(lightRaf);
+  flushLight();
   refreshCards();
   draw();
 });
