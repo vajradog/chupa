@@ -1428,6 +1428,48 @@ function buildCard(): HTMLCanvasElement {
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+/**
+ * Where a picture goes when you take it.
+ *
+ * A download is the wrong verb on a phone. On iOS it puts the file in Files,
+ * which is not where anybody looks for a photograph, and on Android it lands in
+ * Downloads for the same reason — you took a picture of a chupa and it went
+ * somewhere you would go to find a receipt.
+ *
+ * The share sheet is the way into Photos and the Gallery. It is not a detour to
+ * a share dialogue: "Save Image" is the first thing on it, and everything else
+ * on it — Messages, WhatsApp, AirDrop — is also a thing somebody wants to do
+ * with a chupa they just designed.
+ *
+ * A mouse keeps the download. On a desktop the share sheet is an OS panel
+ * nobody asked for, and a file in Downloads is exactly right there.
+ */
+const touch = matchMedia('(pointer: coarse)');
+
+async function keepPicture(blob: Blob, name: string) {
+  const file = new File([blob], name, { type: 'image/png' });
+  if (touch.matches && navigator.canShare?.({ files: [file] })) {
+    try {
+      // Files only. Adding text alongside them makes some targets take the text
+      // and drop the picture, and everything worth saying is printed on it.
+      await navigator.share({ files: [file] });
+      return;
+    } catch (err) {
+      // Dismissing the sheet is an answer, not a failure.
+      if ((err as Error).name === 'AbortError') return;
+      // Anything else — including Safari deciding the tap is too old to count
+      // as permission by the time the image is ready — falls through to a
+      // download, which always works.
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 const shotBtn = document.getElementById('shot') as HTMLButtonElement;
 let shotTimer = 0;
 
@@ -1443,12 +1485,7 @@ shotBtn.addEventListener('click', async () => {
     if (!blob) return;
     const name = `chupa-${slug(nearestNamed(chupaColour)[0])}`
       + `-${slug(nearestNamed(honjuColour)[0])}.png`;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    await keepPicture(blob, name);
     // A download is silent, and a button that does nothing visible reads as
     // broken however well it worked.
     shotBtn.classList.add('done');
